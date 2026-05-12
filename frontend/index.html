@@ -7,6 +7,12 @@
   <title>Nginx Monitor</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
+    #statusChartContainer {
+
+      width: 100%;
+      position: relative;
+    }
+
     * {
       margin: 0;
       padding: 0;
@@ -186,37 +192,32 @@
       " />
 
       </div>
-
       <canvas id="trafficChart"></canvas>
 
     </div>
-    <div class="chart-card">
+    <div class="chart-card full-width">
 
       <div
         style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
 
         <h2>Status Codes Over Time</h2>
 
-        <!-- TOGGLE BUTTONS -->
-        <div style="display:flex; gap:8px;">
-
-          <button class="range-btn active" data-range="minute">
-            Minutes
-          </button>
-
-          <button class="range-btn" data-range="hour">
-            Hours
-          </button>
-
-          <button class="range-btn" data-range="day">
-            Days
-          </button>
-
-        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+  <button class="range-btn" data-range="minute">Minutes</button>
+  <button class="range-btn active" data-range="hour">Hours</button>
+  <button class="range-btn" data-range="day">Days</button>
+  <input id="status-limit" type="number" value="60" min="10" max="1440"
+    style="width:80px; padding:6px 10px; background:#0f172a; border:1px solid #334155; border-radius:8px; color:#e2e8f0;">
+  <span style="color:#64748b; font-size:13px;">items</span>
+</div>
 
       </div>
 
-      <canvas id="statusChart"></canvas>
+      <div style="overflow-x: auto;">
+        <div id="statusChartContainer" style="min-width: 800px;">
+          <canvas id="statusChart"></canvas>
+        </div>
+      </div>
 
     </div>
     <div class="chart-card">
@@ -260,9 +261,14 @@
         options: {
           plugins: { legend: { labels: { color: "#e2e8f0" } } },
           scales: {
-            x: { ticks: { color: "#64748b" } }, y: {
-              type: "logarithmic",
+            x: {
 
+              ticks: {
+                color: "#64748b",
+                maxTicksLimit: 12
+              }
+            }, y: {
+              beginAtZero: true,
               ticks: {
                 color: "#64748b"
               }
@@ -276,6 +282,7 @@
 
     async function loadStatusCodes(range = "minute") {
 
+
       const thresholds = {
         minute: 10,
         hour: 100,
@@ -287,6 +294,14 @@
       );
 
       const data = await res.json();
+      const limit = parseInt(document.getElementById("status-limit").value) || 60;
+if (data.labels.length > limit) {
+  data.labels = data.labels.slice(-limit);
+  data.datasets = data.datasets.map(d => ({
+    ...d,
+    data: d.data.slice(-limit)
+  }));
+}
 
       // destroy old chart
       if (statusChart) {
@@ -311,7 +326,11 @@
           label: dataset.label,
           data: dataset.data,
           borderColor: colors[index % colors.length],
-          tension: 0.4
+          tension: 0.4,
+
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          borderWidth: 2
         };
       });
 
@@ -329,8 +348,17 @@
         tension: 0
       });
 
+      const container = document.getElementById("statusChartContainer");
+      const width = Math.max(data.labels.length * 25, container.parentElement.offsetWidth);
+      container.style.width = width + "px";
+      container.style.height = "400px";
+
+      const canvas = document.getElementById("statusChart");
+      canvas.width = width;
+      canvas.height = 400;
       statusChart = new Chart(
         document.getElementById("statusChart"),
+
         {
 
           type: "line",
@@ -341,8 +369,8 @@
           },
 
           options: {
-
-            responsive: true,
+            responsive: false,
+            maintainAspectRatio: true,
 
             plugins: {
               legend: {
@@ -356,13 +384,16 @@
 
               x: {
                 ticks: {
-                  color: "#64748b"
+                  color: "#64748b",
+                  maxRotation: 45,
+                  minRotation: 45,
+                  autoSkip: false,
                 }
               },
 
               y: {
 
-                type: "logarithmic",
+                beginAtZero: true,
 
                 ticks: {
                   color: "#64748b"
@@ -407,7 +438,7 @@
           scales: {
 
             x: {
-              type: "logarithmic",
+              beginAtZero: true,
 
               ticks: {
                 color: "#64748b"
@@ -501,9 +532,13 @@
         loadTraffic(ip);
 
       });
+    document.getElementById("status-limit").addEventListener("change", () => {
+  const activeRange = document.querySelector(".range-btn.active").dataset.range;
+  loadStatusCodes(activeRange);
+});
     loadSummary();
     loadTraffic();
-    loadStatusCodes();
+    loadStatusCodes("hour");
     loadTopIPs();
     loadErrorBreakdown();
   </script>
