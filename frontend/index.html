@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nginx Monitor</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: sans-serif; background: #0f172a; color: #e2e8f0; padding: 24px; }
+    h1 { font-size: 24px; margin-bottom: 24px; color: #38bdf8; }
+    h2 { font-size: 16px; margin-bottom: 12px; color: #94a3b8; }
+
+    .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
+    .card { background: #1e293b; border-radius: 12px; padding: 20px; }
+    .card .value { font-size: 36px; font-weight: bold; color: #38bdf8; }
+    .card .label { font-size: 13px; color: #64748b; margin-top: 4px; }
+
+    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+    .chart-card { background: #1e293b; border-radius: 12px; padding: 20px; }
+    .full-width { grid-column: span 2; }
+  </style>
+</head>
+<body>
+  <h1>Nginx Monitor Dashboard</h1>
+
+  <div class="summary">
+    <div class="card">
+      <div class="value" id="total-requests">...</div>
+      <div class="label">Total Requests</div>
+    </div>
+    <div class="card">
+      <div class="value" id="unique-ips">...</div>
+      <div class="label">Unique IPs</div>
+    </div>
+    <div class="card">
+      <div class="value" id="errors">...</div>
+      <div class="label">Errors (4xx/5xx)</div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="chart-card full-width">
+      <h2>Traffic Over Time</h2>
+      <canvas id="trafficChart"></canvas>
+    </div>
+    <div class="chart-card">
+      <h2>Status Codes</h2>
+      <canvas id="statusChart"></canvas>
+    </div>
+    <div class="chart-card">
+      <h2>Top IPs</h2>
+      <canvas id="ipChart"></canvas>
+    </div>
+  </div>
+
+  <script>
+    const API = "http://localhost:8000";
+
+    async function loadSummary() {
+      const res = await fetch(`${API}/stats/summary`);
+      const data = await res.json();
+      document.getElementById("total-requests").textContent = data.total_requests.toLocaleString();
+      document.getElementById("unique-ips").textContent = data.unique_ips.toLocaleString();
+      document.getElementById("errors").textContent = data.errors.toLocaleString();
+    }
+
+    async function loadTraffic() {
+      const res = await fetch(`${API}/stats/traffic?granularity=hour`);
+      const data = await res.json();
+      new Chart(document.getElementById("trafficChart"), {
+        type: "line",
+        data: {
+          labels: data.map(d => d.period),
+          datasets: [{
+            label: "Requests",
+            data: data.map(d => d.count),
+            borderColor: "#38bdf8",
+            backgroundColor: "rgba(56,189,248,0.1)",
+            fill: true,
+            tension: 0.4,
+          }]
+        },
+        options: {
+          plugins: { legend: { labels: { color: "#e2e8f0" } } },
+          scales: { x: { ticks: { color: "#64748b" } }, y: { ticks: { color: "#64748b" } } }
+        }
+      });
+    }
+
+    async function loadStatusCodes() {
+      const res = await fetch(`${API}/stats/status-codes`);
+      const data = await res.json();
+      new Chart(document.getElementById("statusChart"), {
+        type: "doughnut",
+        data: {
+          labels: data.map(d => d.status),
+          datasets: [{
+            data: data.map(d => d.count),
+            backgroundColor: ["#38bdf8","#34d399","#fbbf24","#f87171","#a78bfa"],
+          }]
+        },
+        options: { plugins: { legend: { labels: { color: "#e2e8f0" } } } }
+      });
+    }
+
+    async function loadTopIPs() {
+      const res = await fetch(`${API}/stats/top-ips?limit=10`);
+      const data = await res.json();
+      new Chart(document.getElementById("ipChart"), {
+        type: "bar",
+        data: {
+          labels: data.map(d => d.ip),
+          datasets: [{
+            label: "Requests",
+            data: data.map(d => d.count),
+            backgroundColor: "#38bdf8",
+          }]
+        },
+        options: {
+          indexAxis: "y",
+          plugins: { legend: { labels: { color: "#e2e8f0" } } },
+          scales: { x: { ticks: { color: "#64748b" } }, y: { ticks: { color: "#64748b" } } }
+        }
+      });
+    }
+
+    loadSummary();
+    loadTraffic();
+    loadStatusCodes();
+    loadTopIPs();
+  </script>
+</body>
+</html>
