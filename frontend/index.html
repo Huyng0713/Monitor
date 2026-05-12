@@ -1,26 +1,96 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Nginx Monitor</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: sans-serif; background: #0f172a; color: #e2e8f0; padding: 24px; }
-    h1 { font-size: 24px; margin-bottom: 24px; color: #38bdf8; }
-    h2 { font-size: 16px; margin-bottom: 12px; color: #94a3b8; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
 
-    .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
-    .card { background: #1e293b; border-radius: 12px; padding: 20px; }
-    .card .value { font-size: 36px; font-weight: bold; color: #38bdf8; }
-    .card .label { font-size: 13px; color: #64748b; margin-top: 4px; }
+    body {
+      font-family: sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 24px;
+    }
 
-    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
-    .chart-card { background: #1e293b; border-radius: 12px; padding: 20px; }
-    .full-width { grid-column: span 2; }
+    h1 {
+      font-size: 24px;
+      margin-bottom: 24px;
+      color: #38bdf8;
+    }
+
+    h2 {
+      font-size: 16px;
+      margin-bottom: 12px;
+      color: #94a3b8;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: #1e293b;
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .card .value {
+      font-size: 36px;
+      font-weight: bold;
+      color: #38bdf8;
+    }
+
+    .card .label {
+      font-size: 13px;
+      color: #64748b;
+      margin-top: 4px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+    }
+
+    .chart-card {
+      background: #1e293b;
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .full-width {
+      grid-column: span 2;
+    }
+
+    .range-btn {
+      background: #334155;
+      border: none;
+      color: #e2e8f0;
+      padding: 8px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    .range-btn.active {
+      background: #38bdf8;
+      color: #0f172a;
+      font-weight: bold;
+    }
   </style>
 </head>
+
 <body>
   <h1>Nginx Monitor Dashboard</h1>
 
@@ -39,14 +109,115 @@
     </div>
   </div>
 
+  <div class="chart-card full-width" style="margin-bottom: 16px;">
+    <h2>Search Logs</h2>
+    <div style="display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
+      <input id="search-ip" type="text" placeholder="Search by IP..."
+        style="flex:1; padding:8px 12px; background:#0f172a; border:1px solid #334155; border-radius:8px; color:#e2e8f0; min-width:150px;">
+      <input id="search-url" type="text" placeholder="Search by URL..."
+        style="flex:2; padding:8px 12px; background:#0f172a; border:1px solid #334155; border-radius:8px; color:#e2e8f0; min-width:200px;">
+      <select id="search-status"
+        style="padding:8px 12px; background:#0f172a; border:1px solid #334155; border-radius:8px; color:#e2e8f0;">
+        <option value="">All Status Codes</option>
+        <option value="200">200</option>
+        <option value="301">301</option>
+        <option value="307">307</option>
+        <option value="400">400</option>
+        <option value="404">404</option>
+        <option value="500">500</option>
+      </select>
+      <input id="search-from" type="datetime-local"
+        style="padding:8px 12px; background:#0f172a; border:1px solid #334155; border-radius:8px; color:#e2e8f0;">
+      <input id="search-to" type="datetime-local"
+        style="padding:8px 12px; background:#0f172a; border:1px solid #334155; border-radius:8px; color:#e2e8f0;">
+      <button onclick="runSearch()"
+        style="padding:8px 20px; background:#38bdf8; border:none; border-radius:8px; color:#0f172a; font-weight:bold; cursor:pointer;">
+        Search
+      </button>
+      <button onclick="clearSearch()"
+        style="padding:8px 20px; background:#334155; border:none; border-radius:8px; color:#e2e8f0; cursor:pointer;">
+        Clear
+      </button>
+    </div>
+    <table style="width:100%; border-collapse:collapse; font-size:13px;">
+      <thead>
+        <tr>
+          <th style="text-align:left; padding:8px; color:#94a3b8; border-bottom:1px solid #334155;">IP</th>
+          <th style="text-align:left; padding:8px; color:#94a3b8; border-bottom:1px solid #334155;">Time</th>
+          <th style="text-align:left; padding:8px; color:#94a3b8; border-bottom:1px solid #334155;">Method</th>
+          <th style="text-align:left; padding:8px; color:#94a3b8; border-bottom:1px solid #334155;">Path</th>
+          <th style="text-align:left; padding:8px; color:#94a3b8; border-bottom:1px solid #334155;">Status</th>
+          <th style="text-align:left; padding:8px; color:#94a3b8; border-bottom:1px solid #334155;">Size</th>
+        </tr>
+      </thead>
+      <tbody id="search-results"></tbody>
+    </table>
+    <p id="search-count" style="margin-top:8px; color:#64748b; font-size:12px;"></p>
+  </div>
+
+  <div class="chart-card full-width" style="margin-bottom: 16px;">
+    <h2>Error Breakdown</h2>
+    <table style="width:100%; border-collapse: collapse;">
+      <thead>
+        <tr>
+          <th style="text-align:left; padding: 8px; color:#94a3b8; border-bottom: 1px solid #334155;">Status Code</th>
+          <th style="text-align:left; padding: 8px; color:#94a3b8; border-bottom: 1px solid #334155;">Count</th>
+        </tr>
+      </thead>
+      <tbody id="error-table"></tbody>
+    </table>
+  </div>
+
   <div class="grid">
     <div class="chart-card full-width">
-      <h2>Traffic Over Time</h2>
+
+      <div
+        style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+
+        <h2>Traffic Over Time</h2>
+
+        <input id="traffic-ip-search" type="text" placeholder="Search IP traffic..." style="
+        padding:8px 12px;
+        background:#0f172a;
+        border:1px solid #334155;
+        border-radius:8px;
+        color:#e2e8f0;
+        min-width:220px;
+      " />
+
+      </div>
+
       <canvas id="trafficChart"></canvas>
+
     </div>
     <div class="chart-card">
-      <h2>Status Codes</h2>
+
+      <div
+        style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+
+        <h2>Status Codes Over Time</h2>
+
+        <!-- TOGGLE BUTTONS -->
+        <div style="display:flex; gap:8px;">
+
+          <button class="range-btn active" data-range="minute">
+            Minutes
+          </button>
+
+          <button class="range-btn" data-range="hour">
+            Hours
+          </button>
+
+          <button class="range-btn" data-range="day">
+            Days
+          </button>
+
+        </div>
+
+      </div>
+
       <canvas id="statusChart"></canvas>
+
     </div>
     <div class="chart-card">
       <h2>Top IPs</h2>
@@ -64,11 +235,16 @@
       document.getElementById("unique-ips").textContent = data.unique_ips.toLocaleString();
       document.getElementById("errors").textContent = data.errors.toLocaleString();
     }
+    let trafficChart;
 
-    async function loadTraffic() {
-      const res = await fetch(`${API}/stats/traffic?granularity=hour`);
+    async function loadTraffic(ip = "") {
+      const res = await fetch(`${API}/stats/traffic?granularity=hour&ip=${ip}`);
       const data = await res.json();
-      new Chart(document.getElementById("trafficChart"), {
+      if (trafficChart) {
+        trafficChart.destroy();
+      }
+
+      trafficChart = new Chart(document.getElementById("trafficChart"), {
         type: "line",
         data: {
           labels: data.map(d => d.period),
@@ -83,52 +259,255 @@
         },
         options: {
           plugins: { legend: { labels: { color: "#e2e8f0" } } },
-          scales: { x: { ticks: { color: "#64748b" } }, y: { ticks: { color: "#64748b" } } }
+          scales: {
+            x: { ticks: { color: "#64748b" } }, y: {
+              type: "logarithmic",
+
+              ticks: {
+                color: "#64748b"
+              }
+            }
+          }
         }
       });
     }
 
-    async function loadStatusCodes() {
-      const res = await fetch(`${API}/stats/status-codes`);
-      const data = await res.json();
-      new Chart(document.getElementById("statusChart"), {
-        type: "doughnut",
-        data: {
-          labels: data.map(d => d.status),
-          datasets: [{
-            data: data.map(d => d.count),
-            backgroundColor: ["#38bdf8","#34d399","#fbbf24","#f87171","#a78bfa"],
-          }]
-        },
-        options: { plugins: { legend: { labels: { color: "#e2e8f0" } } } }
-      });
-    }
+    let statusChart;
 
+    async function loadStatusCodes(range = "minute") {
+
+      const thresholds = {
+        minute: 10,
+        hour: 100,
+        day: 1200
+      };
+
+      const res = await fetch(
+        `${API}/stats/status-codes-over-time?granularity=${range}`
+      );
+
+      const data = await res.json();
+
+      // destroy old chart
+      if (statusChart) {
+        statusChart.destroy();
+      }
+
+      // generate datasets dynamically
+      const datasets = data.datasets.map((dataset, index) => {
+
+        const colors = [
+          "#38bdf8",
+          "#22c55e",
+          "#fbbf24",
+          "#f87171",
+          "#c084fc",
+          "#14b8a6",
+          "#f97316",
+          "#e11d48"
+        ];
+
+        return {
+          label: dataset.label,
+          data: dataset.data,
+          borderColor: colors[index % colors.length],
+          tension: 0.4
+        };
+      });
+
+      datasets.push({
+
+        label: `Threshold (${thresholds[range]})`,
+
+        data: new Array(data.labels.length)
+          .fill(thresholds[range]),
+
+        borderColor: "#ff4d4f",
+        borderDash: [8, 8],
+        borderWidth: 2,
+        pointRadius: 0,
+        tension: 0
+      });
+
+      statusChart = new Chart(
+        document.getElementById("statusChart"),
+        {
+
+          type: "line",
+
+          data: {
+            labels: data.labels,
+            datasets: datasets
+          },
+
+          options: {
+
+            responsive: true,
+
+            plugins: {
+              legend: {
+                labels: {
+                  color: "#e2e8f0"
+                }
+              }
+            },
+
+            scales: {
+
+              x: {
+                ticks: {
+                  color: "#64748b"
+                }
+              },
+
+              y: {
+
+                type: "logarithmic",
+
+                ticks: {
+                  color: "#64748b"
+                }
+              }
+            }
+          }
+        }
+      );
+    }
     async function loadTopIPs() {
+
       const res = await fetch(`${API}/stats/top-ips?limit=10`);
       const data = await res.json();
+
       new Chart(document.getElementById("ipChart"), {
+
         type: "bar",
+
         data: {
           labels: data.map(d => d.ip),
+
           datasets: [{
             label: "Requests",
             data: data.map(d => d.count),
             backgroundColor: "#38bdf8",
           }]
         },
+
         options: {
+
           indexAxis: "y",
-          plugins: { legend: { labels: { color: "#e2e8f0" } } },
-          scales: { x: { ticks: { color: "#64748b" } }, y: { ticks: { color: "#64748b" } } }
+
+          plugins: {
+            legend: {
+              labels: {
+                color: "#e2e8f0"
+              }
+            }
+          },
+
+          scales: {
+
+            x: {
+              type: "logarithmic",
+
+              ticks: {
+                color: "#64748b"
+              }
+            },
+
+            y: {
+              ticks: {
+                color: "#64748b"
+              }
+            }
+          }
         }
       });
     }
 
+    async function loadErrorBreakdown() {
+      const res = await fetch(`${API}/stats/status-codes`);
+      const data = await res.json();
+      const errors = data.filter(d => d.status >= 400);
+      const tbody = document.getElementById("error-table");
+      tbody.innerHTML = errors.map(d => `
+        <tr>
+          <td style="padding: 8px; color:#f87171;">${d.status}</td>
+          <td style="padding: 8px; color:#e2e8f0;">${d.count.toLocaleString()}</td>
+        </tr>
+      `).join("");
+    }
+
+    async function runSearch() {
+      const ip = document.getElementById("search-ip").value;
+      const path = document.getElementById("search-url").value;
+      const status = document.getElementById("search-status").value;
+      const from = document.getElementById("search-from").value;
+      const to = document.getElementById("search-to").value;
+
+      let url = `${API}/stats/search?`;
+      if (ip) url += `ip=${encodeURIComponent(ip)}&`;
+      if (path) url += `path=${encodeURIComponent(path)}&`;
+      if (status) url += `status=${status}&`;
+      if (from) url += `time_from=${encodeURIComponent(from.replace("T", " "))}&`;
+      if (to) url += `time_to=${encodeURIComponent(to.replace("T", " "))}&`;
+
+      const res = await fetch(url);
+      const data = await res.json();
+
+      const statusColor = (s) => s >= 500 ? "#f87171" : s >= 400 ? "#fbbf24" : "#34d399";
+
+      document.getElementById("search-results").innerHTML = data.map(r => `
+        <tr style="border-bottom:1px solid #1e293b;">
+          <td style="padding:8px; color:#38bdf8;">${r.ip}</td>
+          <td style="padding:8px; color:#64748b;">${r.time}</td>
+          <td style="padding:8px; color:#94a3b8;">${r.method}</td>
+          <td style="padding:8px; color:#e2e8f0; max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${r.path}</td>
+          <td style="padding:8px; color:${statusColor(r.status)};">${r.status}</td>
+          <td style="padding:8px; color:#64748b;">${r.size}</td>
+        </tr>
+      `).join("");
+
+      document.getElementById("search-count").textContent = `Showing ${data.length} results`;
+    }
+
+    function clearSearch() {
+      document.getElementById("search-ip").value = "";
+      document.getElementById("search-url").value = "";
+      document.getElementById("search-status").value = "";
+      document.getElementById("search-from").value = "";
+      document.getElementById("search-to").value = "";
+      document.getElementById("search-results").innerHTML = "";
+      document.getElementById("search-count").textContent = "";
+    }
+
+    document.querySelectorAll(".range-btn")
+      .forEach(btn => {
+
+        btn.addEventListener("click", () => {
+
+          document.querySelectorAll(".range-btn")
+            .forEach(b => b.classList.remove("active"));
+
+          btn.classList.add("active");
+
+          loadStatusCodes(btn.dataset.range);
+        });
+      });
+    document.getElementById("traffic-ip-search")
+      .addEventListener("input", async function () {
+
+        const ip = this.value;
+
+        loadTraffic(ip);
+
+      });
     loadSummary();
     loadTraffic();
     loadStatusCodes();
     loadTopIPs();
+    loadErrorBreakdown();
   </script>
+
 </body>
+
 </html>

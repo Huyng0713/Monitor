@@ -106,3 +106,92 @@ def get_anomalies():
         "many_404s": [{"ip": r["ip"], "count": r["count"]} for r in many_404],
         "many_500s": [{"ip": r["ip"], "count": r["count"]} for r in many_500],
     }
+@app.get("/stats/search")
+def search_logs(ip: str = None, path: str = None, status: int = None, 
+                time_from: str = None, time_to: str = None, limit: int = 100):
+    conn = get_connection()
+    query = "SELECT ip, time, method, path, status, size FROM logs WHERE 1=1"
+    params = []
+    if ip:
+        query += " AND ip LIKE ?"
+        params.append(f"%{ip}%")
+    if path:
+        query += " AND path LIKE ?"
+        params.append(f"%{path}%")
+    if status:
+        query += " AND status = ?"
+        params.append(status)
+    if time_from:
+        query += " AND time >= ?"
+        params.append(time_from)
+    if time_to:
+        query += " AND time <= ?"
+        params.append(time_to)
+    query += " ORDER BY time DESC LIMIT ?"
+    params.append(limit)
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+    return [{"ip": r["ip"], "time": r["time"], "method": r["method"],
+             "path": r["path"], "status": r["status"], "size": r["size"]} for r in rows]
+
+@app.get("/stats/status-codes-over-time")
+def get_status_codes_over_time(granularity: str = "hour"):
+
+    formats = {
+        "minute": "%Y-%m-%dT%H:%M",
+        "hour": "%Y-%m-%dT%H",
+        "day": "%Y-%m-%d",
+    }
+
+    fmt = formats.get(granularity, "%Y-%m-%dT%H")
+
+    conn = get_connection()
+
+    rows = conn.execute("""
+        SELECT
+            strftime(?, time) as period,
+            status,
+            COUNT(*) as count
+        FROM logs
+        GROUP BY period, status
+        ORDER BY period
+    """, (fmt,)).fetchall()
+
+    conn.close()
+
+    grouped = {}
+
+    all_statuses = set()
+
+    for row in rows:
+
+        period = row["period"]
+        status = str(row["status"])
+        count = row["count"]
+
+        all_statuses.add(status)
+
+        if period not in grouped:
+            grouped[period] = {}
+
+        grouped[period][status] = count
+
+    labels = sorted(grouped.keys())
+
+    datasets = []
+
+    for status in sorted(all_statuses):
+
+        datasets.append({
+            "label": status,
+
+            "data": [
+                grouped[label].get(status, 0)
+                for label in labels
+            ]
+        })
+
+    return {
+        "labels": labels,
+        "datasets": datasets
+    }
