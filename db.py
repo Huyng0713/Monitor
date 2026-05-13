@@ -4,9 +4,10 @@ from contextlib import contextmanager
 
 from log import log_activity, log_exception
 from log_parse import LogEntry
+from runtime_paths import ensure_data_dir
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "monitor.db")
+DB_PATH = os.path.join(ensure_data_dir(), "monitor.db")
 SQLITE_TIMEOUT_SECONDS = 5
 
 

@@ -2,9 +2,10 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 from typing import Dict
+from runtime_paths import ensure_data_dir
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-LOG_DIR = os.path.join(BASE_DIR, "logs")
+LOG_DIR = os.path.join(ensure_data_dir(), "logs")
 LOG_MAX_BYTES = 5 * 1024 * 1024
 LOG_BACKUP_COUNT = 3
 DEFAULT_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()

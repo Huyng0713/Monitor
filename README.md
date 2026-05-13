@@ -63,7 +63,8 @@ Các bước deploy:
 Lưu ý quan trọng:
 
 - Vercel dùng serverless function, nên filesystem là tạm thời.
-- `monitor.db` và các file trong `logs/` không phù hợp để lưu trữ lâu dài trên Vercel.
+- Trong repo này, khi chạy trên Vercel, `monitor.db` và `logs/` sẽ tự chuyển sang `/tmp/nginx-monitor` để tránh crash lúc startup.
+- Dữ liệu trong `/tmp` vẫn là tạm thời, nên không phù hợp để lưu trữ lâu dài trên Vercel.
 - Nếu cần production thật, nên chuyển DB sang PostgreSQL / MySQL / managed DB và chuyển log sang dịch vụ ngoài hoặc stdout collector.
 - Vercel phù hợp để demo UI/API hơn là chạy hệ thống monitor ghi file liên tục.
 
