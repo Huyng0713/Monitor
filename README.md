@@ -45,6 +45,35 @@ python3 main.py
 
 Ứng dụng mặc định chạy tại [http://localhost:8000](http://localhost:8000).
 
+## Deploy lên Vercel
+
+Repo này đã có sẵn:
+
+- `api/index.py` làm entrypoint cho Vercel
+- `vercel.json` để route toàn bộ request vào FastAPI app
+- `requirements.txt` để Vercel cài dependencies Python
+
+Các bước deploy:
+
+1. Đẩy code lên GitHub.
+2. Import repo vào Vercel.
+3. Framework preset: để Vercel tự nhận hoặc chọn `Other`.
+4. Deploy.
+
+Lưu ý quan trọng:
+
+- Vercel dùng serverless function, nên filesystem là tạm thời.
+- `monitor.db` và các file trong `logs/` không phù hợp để lưu trữ lâu dài trên Vercel.
+- Nếu cần production thật, nên chuyển DB sang PostgreSQL / MySQL / managed DB và chuyển log sang dịch vụ ngoài hoặc stdout collector.
+- Vercel phù hợp để demo UI/API hơn là chạy hệ thống monitor ghi file liên tục.
+
+Nếu sau khi deploy vẫn lỗi, kiểm tra:
+
+- repo đã có `api/index.py`
+- repo đã có `vercel.json`
+- Vercel build logs có cài `fastapi` và `uvicorn`
+- bạn đang mở đúng domain của deployment mới nhất
+
 ## Nạp dữ liệu mẫu từ access log
 
 ```bash
