@@ -2,7 +2,11 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 from typing import Dict
+
+from env import load_dotenv
 from runtime_paths import ensure_data_dir
+
+load_dotenv()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_DIR = os.path.join(ensure_data_dir(), "logs")

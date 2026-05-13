@@ -1,124 +1,144 @@
 import os
-import sqlite3
 from contextlib import contextmanager
+from datetime import datetime
 
+from sqlalchemy import DateTime, Integer, String, UniqueConstraint, create_engine
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
+from sqlalchemy.pool import NullPool
+
+from env import load_dotenv
 from log import log_activity, log_exception
 from log_parse import LogEntry
-from runtime_paths import ensure_data_dir
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(ensure_data_dir(), "monitor.db")
-SQLITE_TIMEOUT_SECONDS = 5
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+BULK_INSERT_BATCH_SIZE = int(os.getenv("BULK_INSERT_BATCH_SIZE", "500"))
+
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL environment variable is required")
+
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
+elif DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
 
 
-def get_connection():
-    try:
-        conn = sqlite3.connect(DB_PATH, timeout=SQLITE_TIMEOUT_SECONDS)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute("PRAGMA temp_store=MEMORY")
-        return conn
-    except sqlite3.Error:
-        log_exception("Failed to open SQLite connection: path=%s", DB_PATH)
-        raise
+class Base(DeclarativeBase):
+    pass
+
+
+class LogRecord(Base):
+    __tablename__ = "logs"
+    __table_args__ = (
+        UniqueConstraint("ip", "time", "method", "path", "status", name="uq_logs_identity"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ip: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    method: Mapped[str | None] = mapped_column(String, nullable=True)
+    path: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    referer: Mapped[str | None] = mapped_column(String, nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    poolclass=NullPool,
+)
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
 
 @contextmanager
 def read_connection():
-    conn = get_connection()
+    session = SessionLocal()
     try:
-        yield conn
-    except sqlite3.Error:
+        yield session
+    except Exception:
         log_exception("Database read failed")
         raise
     finally:
-        conn.close()
+        session.close()
 
 
 @contextmanager
 def write_connection():
-    conn = get_connection()
+    session = SessionLocal()
     try:
-        yield conn
-        conn.commit()
-    except sqlite3.Error:
-        conn.rollback()
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
         log_exception("Database write failed")
         raise
     finally:
-        conn.close()
+        session.close()
 
 
 def init_db():
-    with write_connection() as conn:
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ip TEXT NOT NULL,
-            time TEXT NOT NULL,
-            method TEXT,
-            path TEXT,
-            status INTEGER,
-            size INTEGER,
-            referer TEXT,
-            user_agent TEXT,
-            UNIQUE(ip, time, method, path, status)
-        )
-    """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_time ON logs(time)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_ip ON logs(ip)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_status ON logs(status)")
+    try:
+        Base.metadata.create_all(bind=engine)
+        log_activity("Database schema ready")
+    except Exception:
+        log_exception("Failed to initialize database schema")
+        raise
 
-    log_activity("Database schema ready")
+
+def _entry_to_row(entry: LogEntry) -> dict:
+    return {
+        "ip": entry.ip,
+        "time": entry.time,
+        "method": entry.method,
+        "path": entry.path,
+        "status": entry.status,
+        "size": entry.size,
+        "referer": entry.referer,
+        "user_agent": entry.user_agent,
+    }
 
 
 def insert_entry(entry: LogEntry):
-    with write_connection() as conn:
-        conn.execute("""
-            INSERT INTO logs (ip, time, method, path, status, size, referer, user_agent)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            entry.ip,
-            entry.time.isoformat(),
-            entry.method,
-            entry.path,
-            entry.status,
-            entry.size,
-            entry.referer,
-            entry.user_agent,
-        ))
+    with write_connection() as session:
+        statement = pg_insert(LogRecord).values(_entry_to_row(entry))
+        statement = statement.on_conflict_do_nothing(
+            constraint="uq_logs_identity",
+        )
+        session.execute(statement)
 
 
 def insert_many(entries):
-    """Faster bulk insert for loading existing log file."""
-    rows = [
-        (
-            entry.ip,
-            entry.time.isoformat(),
-            entry.method,
-            entry.path,
-            entry.status,
-            entry.size,
-            entry.referer,
-            entry.user_agent,
-        )
-        for entry in entries
-    ]
+    rows = [_entry_to_row(entry) for entry in entries]
 
     if not rows:
         log_activity("insert_many called with no entries")
         return 0
 
-    with write_connection() as conn:
-        cursor = conn.executemany("""
-            INSERT OR IGNORE INTO logs (ip, time, method, path, status, size, referer, user_agent)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, rows)
+    inserted_total = 0
 
-    inserted = cursor.rowcount if cursor.rowcount != -1 else 0
-    log_activity("Bulk insert completed: received=%s inserted=%s", len(rows), inserted)
-    return inserted
+    for start in range(0, len(rows), BULK_INSERT_BATCH_SIZE):
+        batch = rows[start:start + BULK_INSERT_BATCH_SIZE]
+        with write_connection() as session:
+            statement = pg_insert(LogRecord).values(batch)
+            statement = statement.on_conflict_do_nothing(
+                constraint="uq_logs_identity",
+            )
+            result = session.execute(statement)
+
+        inserted = result.rowcount if result.rowcount is not None and result.rowcount >= 0 else 0
+        inserted_total += inserted
+
+    log_activity(
+        "Bulk insert completed: received=%s inserted=%s batch_size=%s",
+        len(rows),
+        inserted_total,
+        BULK_INSERT_BATCH_SIZE,
+    )
+    return inserted_total
 
 
 if __name__ == "__main__":

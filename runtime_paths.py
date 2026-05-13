@@ -1,5 +1,9 @@
 import os
 
+from env import load_dotenv
+
+load_dotenv()
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 IS_VERCEL = os.getenv("VERCEL") == "1"
 

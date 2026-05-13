@@ -1,6 +1,6 @@
 # Nginx Monitor
 
-Ứng dụng theo dõi access log Nginx bằng FastAPI + SQLite, hiển thị dashboard thống kê và hỗ trợ mở rộng thêm nguồn log hoặc loại thống kê mới.
+Ứng dụng theo dõi access log Nginx bằng FastAPI + PostgreSQL, hiển thị dashboard thống kê và hỗ trợ mở rộng thêm nguồn log hoặc loại thống kê mới.
 
 ## Tính năng
 
@@ -18,7 +18,7 @@
 
 - `main.py`: điểm vào để chạy API.
 - `routes.py`: định nghĩa HTTP API.
-- `db.py`: kết nối và thao tác SQLite.
+- `db.py`: kết nối và thao tác PostgreSQL qua SQLAlchemy.
 - `log.py`: cấu hình logging tập trung.
 - `log_parse.py`: parser cho access log.
 - `log_sources.py`: abstraction cho nguồn log.
@@ -34,8 +34,34 @@
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install fastapi uvicorn
+pip install -r requirements.txt
 ```
+
+## Cấu hình môi trường
+
+Ứng dụng yêu cầu biến môi trường `DATABASE_URL`.
+
+Bạn có thể tạo file `.env` từ mẫu:
+
+```bash
+cp .env.example .env
+```
+
+Ví dụ với PostgreSQL:
+
+```bash
+export DATABASE_URL="postgresql+psycopg://USER:PASSWORD@HOST:5432/DB_NAME"
+```
+
+Hoặc điền trực tiếp trong `.env`:
+
+```env
+DATABASE_URL='postgresql://postgres.PROJECT_REF:YOUR_URL_ENCODED_PASSWORD@aws-1-ap-south-1.pooler.supabase.com:6543/postgres'
+BULK_INSERT_BATCH_SIZE=500
+LOG_LEVEL=INFO
+```
+
+Với Vercel, thêm `DATABASE_URL` tại Project Settings → Environment Variables.
 
 ## Chạy ứng dụng
 
@@ -63,9 +89,9 @@ Các bước deploy:
 Lưu ý quan trọng:
 
 - Vercel dùng serverless function, nên filesystem là tạm thời.
-- Trong repo này, khi chạy trên Vercel, `monitor.db` và `logs/` sẽ tự chuyển sang `/tmp/nginx-monitor` để tránh crash lúc startup.
-- Dữ liệu trong `/tmp` vẫn là tạm thời, nên không phù hợp để lưu trữ lâu dài trên Vercel.
-- Nếu cần production thật, nên chuyển DB sang PostgreSQL / MySQL / managed DB và chuyển log sang dịch vụ ngoài hoặc stdout collector.
+- Database giờ phải là PostgreSQL ngoài qua `DATABASE_URL`.
+- Log file vẫn chạy tạm ở `/tmp/nginx-monitor` khi deploy trên Vercel.
+- Nếu cần production thật, nên chuyển log sang dịch vụ ngoài hoặc stdout collector.
 - Vercel phù hợp để demo UI/API hơn là chạy hệ thống monitor ghi file liên tục.
 
 Nếu sau khi deploy vẫn lỗi, kiểm tra:
@@ -81,7 +107,7 @@ Nếu sau khi deploy vẫn lỗi, kiểm tra:
 python3 test.py
 ```
 
-`test.py` sẽ đọc `access.log`, parse dữ liệu và insert vào `monitor.db`.
+`test.py` sẽ đọc `access.log`, parse dữ liệu và insert vào PostgreSQL được cấu hình qua `DATABASE_URL`.
 
 ## Logging
 

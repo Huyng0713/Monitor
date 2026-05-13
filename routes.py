@@ -2,11 +2,11 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
-from sqlite3 import Error as SQLiteError
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
+from sqlalchemy.exc import SQLAlchemyError
 
 from db import init_db
 from log import get_log_paths, log_activity, log_exception, log_file_issue
@@ -15,11 +15,6 @@ from stats_service import StatsService
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 INDEX_PATH = os.path.join(BASE_DIR, "frontend/index.html")
 VALID_GRANULARITIES = {"minute", "hour", "day"}
-TIME_FORMATS = {
-    "minute": "%Y-%m-%dT%H:%M",
-    "hour": "%Y-%m-%dT%H",
-    "day": "%Y-%m-%d",
-}
 stats_service = StatsService()
 
 
@@ -74,8 +69,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
-@app.exception_handler(SQLiteError)
-async def sqlite_exception_handler(request: Request, exc: SQLiteError):
+@app.exception_handler(SQLAlchemyError)
+async def database_exception_handler(request: Request, exc: SQLAlchemyError):
     log_exception("Database error on path=%s", request.url.path)
     return JSONResponse(status_code=500, content={"detail": "Database operation failed"})
 
@@ -126,7 +121,7 @@ def get_status_codes():
 
 @app.get("/stats/traffic")
 def get_traffic(granularity: str = "hour", ip: str = None):
-    return stats_service.get_traffic(TIME_FORMATS[require_granularity(granularity)], ip)
+    return stats_service.get_traffic(require_granularity(granularity), ip)
 
 
 @app.get("/stats/anomalies")
@@ -148,7 +143,7 @@ def search_logs(
 
 @app.get("/stats/status-codes-over-time")
 def get_status_codes_over_time(granularity: str = "hour"):
-    return stats_service.get_status_codes_over_time(TIME_FORMATS[require_granularity(granularity)])
+    return stats_service.get_status_codes_over_time(require_granularity(granularity))
 
 
 @app.get("/stats/logs")
