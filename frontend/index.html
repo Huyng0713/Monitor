@@ -242,6 +242,24 @@
       <div id="threshold-table"></div>
     </div>
   </div>
+  <div class="chart-card full-width" style="margin-top: 16px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <h2>System Logs</h2>
+      <button onclick="loadSystemLogs()"
+        style="padding:6px 14px; background:#334155; border:none; border-radius:8px; color:#e2e8f0; cursor:pointer;">
+        Refresh
+      </button>
+    </div>
+    <div id="system-logs" style="
+      background:#0f172a;
+      border-radius:8px;
+      padding:16px;
+      font-family:monospace;
+      font-size:12px;
+      max-height:300px;
+      overflow-y:auto;
+    "></div>
+  </div>
 
   <script>
     const API = "http://localhost:8000";
@@ -408,13 +426,19 @@
 
         return {
           label: dataset.label,
-          data: dataset.data,
+          data: dataset.data.map(v => {
+            if (v === null || v === undefined || v < 1) {
+              return useLogScale ? 0.1 : 0;
+            }
+            return v;
+          }),
           borderColor: colors[index % colors.length],
           tension: 0.4,
-
           pointRadius: 0,
-          pointHoverRadius: 4,
-          borderWidth: 2
+          pointHoverRadius: 8,
+          hitRadius: 10,
+          borderWidth: 2,
+          spanGaps: true,
         };
       });
 
@@ -454,12 +478,27 @@
 
           options: {
             responsive: false,
-            maintainAspectRatio: true,
-
+            interaction: {
+              mode: "point",
+              intersect: true,
+            },
             plugins: {
               legend: {
                 labels: {
                   color: "#e2e8f0"
+                }
+              },
+              tooltip: {
+                backgroundColor: "#1e293b",
+                titleColor: "#94a3b8",
+                bodyColor: "#e2e8f0",
+                borderColor: "#334155",
+                borderWidth: 1,
+                padding: 10,
+                callbacks: {
+                  label: function (context) {
+                    return ` ${context.dataset.label}: ${context.parsed.y}`;
+                  }
                 }
               }
             },
@@ -477,8 +516,7 @@
 
               y: {
                 type: useLogScale ? "logarithmic" : "linear",
-                beginAtZero: !useLogScale,
-                min: useLogScale ? 1 : 0,
+                min: useLogScale ? 0.09 : 0,
                 ticks: {
                   color: "#64748b",
                   callback: function (value) {
@@ -487,6 +525,7 @@
                   }
                 }
               }
+
             }
           }
         }
@@ -696,12 +735,12 @@
         });
       });
     document.getElementById("traffic-ip-search")
-  .addEventListener("input", async function () {
-    const ip = this.value.trim();
-    if (ip === "" || /^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) {
-      loadTraffic(ip);
-    }
-  });
+      .addEventListener("input", async function () {
+        const ip = this.value.trim();
+        if (ip === "" || /^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) {
+          loadTraffic(ip);
+        }
+      });
     document.getElementById("status-limit").addEventListener("change", () => {
       const activeRange = document.querySelector(".range-btn.active").dataset.range;
       loadStatusCodes(activeRange);
@@ -710,6 +749,22 @@
       loadThresholdIPs();
     });
 
+    async function loadSystemLogs() {
+  const res = await fetch(`${API}/stats/logs`);
+  const data = await res.json();
+  const container = document.getElementById("system-logs");
+
+  const colorLine = (line) => {
+    if (line.includes("[ERROR]")) return `<span style="color:#f87171;">${line}</span>`;
+    if (line.includes("[WARNING]")) return `<span style="color:#fbbf24;">${line}</span>`;
+    if (line.includes("[INFO]")) return `<span style="color:#34d399;">${line}</span>`;
+    return `<span style="color:#64748b;">${line}</span>`;
+  };
+
+  container.innerHTML = data.lines.map(l => colorLine(l.trimEnd())).join("<br>");
+  container.scrollTop = container.scrollHeight;
+}
+
     loadSummary();
     loadTraffic();
     loadStatusCodes("hour");
@@ -717,6 +772,7 @@
     loadErrorBreakdown();
     loadAnomalies();
     loadThresholdIPs();
+    loadSystemLogs();
   </script>
 
 </body>
