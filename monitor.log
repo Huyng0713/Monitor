@@ -1,2 +1,68 @@
 2026-05-13 09:16:15 [INFO] Starting Nginx Monitor server on port 8000
 2026-05-13 09:42:58 [INFO] Starting Nginx Monitor server on port 8000
+2026-05-13 10:22:27 [INFO] Starting Nginx Monitor server on port 8000
+2026-05-13 10:47:11 [INFO] Starting Nginx Monitor server on port 8000
+2026-05-13 11:05:00 [INFO] Database schema ready
+2026-05-13 11:05:00 [INFO] API startup completed
+2026-05-13 11:05:03 [INFO] HTTP request completed: method=GET path=/stats/summary status=200 client=127.0.0.1 duration_ms=8.41
+2026-05-13 11:05:06 [INFO] HTTP request completed: method=GET path=/stats/top-ips status=200 client=127.0.0.1 duration_ms=11.77
+2026-05-13 11:05:09 [WARNING] Validation error on path=/stats/top-ips details=[{'type': 'less_than_equal', 'loc': ('query', 'limit'), 'msg': 'Input should be less than or equal to 100', 'input': '999', 'ctx': {'le': 100}}]
+2026-05-13 11:05:14 [WARNING] Failed to parse access log line: sample=malformed raw line without nginx combined format
+2026-05-13 11:05:19 [INFO] System log tail requested: lines=50 returned=10
+2026-05-13 11:05:23 [ERROR] Access log file not found: path=missing-access.log
+2026-05-13 11:04:50 [INFO] Starting Nginx Monitor server: host=0.0.0.0 port=8000
+2026-05-13 11:04:50 [INFO] Database schema ready
+2026-05-13 11:04:50 [INFO] API startup completed
+2026-05-13 11:04:57 [INFO] HTTP request completed: method=GET path=/ status=200 client=127.0.0.1 duration_ms=7.07
+2026-05-13 11:04:57 [INFO] HTTP request completed: method=GET path=/stats/status-codes status=200 client=127.0.0.1 duration_ms=36.33
+2026-05-13 11:04:57 [INFO] System log tail requested: lines=50 returned=17
+2026-05-13 11:04:57 [INFO] HTTP request completed: method=GET path=/stats/logs status=200 client=127.0.0.1 duration_ms=3.24
+2026-05-13 11:04:57 [INFO] HTTP request completed: method=GET path=/stats/top-ips status=200 client=127.0.0.1 duration_ms=66.59
+2026-05-13 11:04:57 [INFO] HTTP request completed: method=GET path=/stats/summary status=200 client=127.0.0.1 duration_ms=70.25
+2026-05-13 11:04:57 [INFO] HTTP request completed: method=GET path=/stats/traffic status=200 client=127.0.0.1 duration_ms=116.18
+2026-05-13 11:04:57 [INFO] HTTP request completed: method=GET path=/stats/status-codes-over-time status=200 client=127.0.0.1 duration_ms=179.43
+2026-05-13 11:04:57 [INFO] HTTP request completed: method=GET path=/stats/anomalies status=200 client=127.0.0.1 duration_ms=180.78
+2026-05-13 11:04:57 [INFO] HTTP request completed: method=GET path=/stats/anomalies status=200 client=127.0.0.1 duration_ms=33.14
+2026-05-13 11:05:04 [INFO] HTTP request completed: method=GET path=/stats/status-codes-over-time status=200 client=127.0.0.1 duration_ms=49.29
+2026-05-13 11:15:19 [ERROR] Error creating LogEntry from line: sample=127.0.0.1 - - [99/Bad/2026:25:61:61 +0000] "GET /broken HTTP/1.1" 200 123 "-" "test-agent"
+Traceback (most recent call last):
+  File "/Users/ghuy1307/nginx-monitor/log_parse.py", line 45, in parse_line
+    time=datetime.strptime(data["time"], TIME_FORMAT),
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/_strptime.py", line 554, in _strptime_datetime
+    tt, fraction, gmtoff_fraction = _strptime(data_string, format)
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/_strptime.py", line 333, in _strptime
+    raise ValueError("time data %r does not match format %r" %
+ValueError: time data '99/Bad/2026:25:61:61 +0000' does not match format '%d/%b/%Y:%H:%M:%S %z'
+2026-05-13 11:20:05 [INFO] HTTP request completed: method=GET path=/ status=200 client=127.0.0.1 duration_ms=9.25
+2026-05-13 11:20:05 [INFO] HTTP request completed: method=GET path=/stats/status-codes status=200 client=127.0.0.1 duration_ms=48.8
+2026-05-13 11:20:05 [INFO] System log tail requested: lines=50 returned=39
+2026-05-13 11:20:05 [INFO] HTTP request completed: method=GET path=/stats/logs status=200 client=127.0.0.1 duration_ms=0.99
+2026-05-13 11:20:05 [INFO] HTTP request completed: method=GET path=/stats/summary status=200 client=127.0.0.1 duration_ms=83.32
+2026-05-13 11:20:05 [INFO] HTTP request completed: method=GET path=/stats/top-ips status=200 client=127.0.0.1 duration_ms=80.43
+2026-05-13 11:20:05 [INFO] HTTP request completed: method=GET path=/stats/traffic status=200 client=127.0.0.1 duration_ms=143.1
+2026-05-13 11:20:06 [INFO] HTTP request completed: method=GET path=/stats/status-codes-over-time status=200 client=127.0.0.1 duration_ms=230.69
+2026-05-13 11:20:06 [INFO] HTTP request completed: method=GET path=/stats/anomalies status=200 client=127.0.0.1 duration_ms=231.01
+2026-05-13 11:20:06 [INFO] HTTP request completed: method=GET path=/stats/anomalies status=200 client=127.0.0.1 duration_ms=39.98
+2026-05-13 11:23:51 [INFO] HTTP request completed: method=GET path=/ status=200 client=127.0.0.1 duration_ms=7.54
+2026-05-13 11:23:51 [INFO] HTTP request completed: method=GET path=/stats/status-codes status=200 client=127.0.0.1 duration_ms=16.07
+2026-05-13 11:23:51 [INFO] System log tail requested: lines=50 returned=49
+2026-05-13 11:23:51 [INFO] HTTP request completed: method=GET path=/stats/logs status=200 client=127.0.0.1 duration_ms=0.97
+2026-05-13 11:23:51 [INFO] HTTP request completed: method=GET path=/stats/top-ips status=200 client=127.0.0.1 duration_ms=111.21
+2026-05-13 11:23:51 [INFO] HTTP request completed: method=GET path=/stats/summary status=200 client=127.0.0.1 duration_ms=117.41
+2026-05-13 11:23:51 [INFO] HTTP request completed: method=GET path=/stats/traffic status=200 client=127.0.0.1 duration_ms=164.23
+2026-05-13 11:23:51 [INFO] HTTP request completed: method=GET path=/stats/status-codes-over-time status=200 client=127.0.0.1 duration_ms=222.52
+2026-05-13 11:23:51 [INFO] HTTP request completed: method=GET path=/stats/anomalies status=200 client=127.0.0.1 duration_ms=151.73
+2026-05-13 11:23:51 [INFO] HTTP request completed: method=GET path=/stats/anomalies status=200 client=127.0.0.1 duration_ms=38.17
+2026-05-13 11:23:58 [INFO] HTTP request completed: method=GET path=/stats/status-codes-over-time status=200 client=127.0.0.1 duration_ms=53.05
+2026-05-13 11:30:59 [INFO] HTTP request completed: method=GET path=/ status=200 client=127.0.0.1 duration_ms=20.11
+2026-05-13 11:30:59 [INFO] HTTP request completed: method=GET path=/stats/status-codes status=200 client=127.0.0.1 duration_ms=50.78
+2026-05-13 11:30:59 [INFO] System log tail requested: lines=50 returned=50
+2026-05-13 11:30:59 [INFO] HTTP request completed: method=GET path=/stats/logs status=200 client=127.0.0.1 duration_ms=7.47
+2026-05-13 11:30:59 [INFO] HTTP request completed: method=GET path=/stats/top-ips status=200 client=127.0.0.1 duration_ms=89.26
+2026-05-13 11:30:59 [INFO] HTTP request completed: method=GET path=/stats/summary status=200 client=127.0.0.1 duration_ms=97.13
+2026-05-13 11:30:59 [INFO] HTTP request completed: method=GET path=/stats/traffic status=200 client=127.0.0.1 duration_ms=155.17
+2026-05-13 11:30:59 [INFO] HTTP request completed: method=GET path=/stats/status-codes-over-time status=200 client=127.0.0.1 duration_ms=224.84
+2026-05-13 11:30:59 [INFO] HTTP request completed: method=GET path=/stats/anomalies status=200 client=127.0.0.1 duration_ms=217.57
+2026-05-13 11:30:59 [INFO] HTTP request completed: method=GET path=/stats/anomalies status=200 client=127.0.0.1 duration_ms=48.53
