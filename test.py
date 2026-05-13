@@ -1,12 +1,17 @@
-from log_parse import parse_file
 from db import init_db, insert_many
-from log import logger
+from log import log_activity, log_exception
+from log_sources import FileLogSource, collect_entries
 
-init_db()
-logger.info("Database initialized")
+try:
+    init_db()
+    log_activity("Database initialized")
 
-entries = list(parse_file("access.log"))
-logger.info(f"Parsed {len(entries)} entries from log file")
+    source = FileLogSource(name="default-access-log", filepath="access.log")
+    entries = collect_entries(source)
+    log_activity("Parsed %s entries from log source=%s", len(entries), source.name)
 
-insert_many(entries)
-logger.info(f"Inserted {len(entries)} entries into DB")
+    inserted = insert_many(entries)
+    log_activity("Inserted %s entries into DB", inserted)
+except Exception:
+    log_exception("Log import pipeline failed")
+    raise
