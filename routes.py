@@ -55,8 +55,7 @@ def get_status_codes():
     return [{"status": r["status"], "count": r["count"]} for r in rows]
 
 @app.get("/stats/traffic")
-def get_traffic(granularity: str = "hour"):
-    """Traffic over time — by minute, hour, or day."""
+def get_traffic(granularity: str = "hour", ip: str = None):
     formats = {
         "minute": "%Y-%m-%dT%H:%M",
         "hour":   "%Y-%m-%dT%H",
@@ -64,10 +63,19 @@ def get_traffic(granularity: str = "hour"):
     }
     fmt = formats.get(granularity, "%Y-%m-%dT%H")
     conn = get_connection()
-    rows = conn.execute("""
-        SELECT strftime(?, time) as period, COUNT(*) as count
-        FROM logs GROUP BY period ORDER BY period
-    """, (fmt,)).fetchall()
+    
+    if ip:
+        rows = conn.execute("""
+            SELECT strftime(?, time) as period, COUNT(*) as count
+            FROM logs WHERE ip = ?
+            GROUP BY period ORDER BY period
+        """, (fmt, f"%{ip}%")).fetchall()
+    else:
+        rows = conn.execute("""
+            SELECT strftime(?, time) as period, COUNT(*) as count
+            FROM logs GROUP BY period ORDER BY period
+        """, (fmt,)).fetchall()
+    
     conn.close()
     return [{"period": r["period"], "count": r["count"]} for r in rows]
 
