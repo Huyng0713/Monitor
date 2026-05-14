@@ -750,29 +750,34 @@
     });
 
     async function loadSystemLogs() {
-  const res = await fetch(`${API}/stats/logs`);
-  const data = await res.json();
-  const container = document.getElementById("system-logs");
+      const res = await fetch(`${API}/stats/logs`);
+      const data = await res.json();
+      const container = document.getElementById("system-logs");
 
-  const colorLine = (line) => {
-    if (line.includes("[ERROR]")) return `<span style="color:#f87171;">${line}</span>`;
-    if (line.includes("[WARNING]")) return `<span style="color:#fbbf24;">${line}</span>`;
-    if (line.includes("[INFO]")) return `<span style="color:#34d399;">${line}</span>`;
-    return `<span style="color:#64748b;">${line}</span>`;
-  };
+      const colorLine = (line) => {
+        if (line.includes("[ERROR]")) return `<span style="color:#f87171;">${line}</span>`;
+        if (line.includes("[WARNING]")) return `<span style="color:#fbbf24;">${line}</span>`;
+        if (line.includes("[INFO]")) return `<span style="color:#34d399;">${line}</span>`;
+        return `<span style="color:#64748b;">${line}</span>`;
+      };
 
-  container.innerHTML = data.lines.map(l => colorLine(l.trimEnd())).join("<br>");
-  container.scrollTop = container.scrollHeight;
-}
+      container.innerHTML = data.lines.map(l => colorLine(l.trimEnd())).join("<br>");
+      container.scrollTop = container.scrollHeight;
+    }
 
+    // Instead of 8 parallel calls, load critical ones first
     loadSummary();
-    loadTraffic();
-    loadStatusCodes("hour");
-    loadTopIPs();
     loadErrorBreakdown();
-    loadAnomalies();
-    loadThresholdIPs();
-    loadSystemLogs();
+    loadTopIPs();
+
+    // Defer heavier ones
+    setTimeout(() => {
+      loadTraffic();
+      loadStatusCodes("hour");
+      loadAnomalies();
+      loadThresholdIPs();
+      loadSystemLogs();
+    }, 100);
   </script>
 
 </body>
