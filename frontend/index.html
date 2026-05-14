@@ -338,136 +338,131 @@
     let trafficChart;
 
     async function loadTraffic(ip = "") {
-      const res = await fetch(`${API}/stats/traffic?granularity=hour&ip=${ip}`);
-      const data = await res.json();
-      const points = data.map(d => ({ x: d.period.replace("T", " "), y: d.count }));
+  const res = await fetch(`${API}/stats/traffic?granularity=hour&ip=${ip}`);
+  const data = await res.json();
 
-      if (trafficChart) {
-        trafficChart.data.datasets[0].data = points;
-        trafficChart.update("none");
-        return;
-      }
+  const labels = data.map(d => d.period.replace("T", " "));
+  const counts = data.map(d => d.count);
 
-      trafficChart = new Chart(document.getElementById("trafficChart"), {
-        type: "line",
-        data: {
-          datasets: [makeDataset("Requests", points, "#38bdf8", { fill: true })]
-        },
-        options: {
-          parsing: false,
-          normalized: true,
-          animation: false,
-          plugins: { legend: { labels: { color: "#e2e8f0" } } },
-          scales: {
-            x: { type: "category", ticks: { color: "#64748b", maxTicksLimit: 12 } },
-            y: { beginAtZero: true, ticks: { color: "#64748b" } }
-          }
-        }
-      });
-    }
+  if (trafficChart) {
+    trafficChart.data.labels = labels;
+    trafficChart.data.datasets[0].data = counts;
+    trafficChart.update("none");
+    return;
+  }
 
-    let statusChart;
-    let useLogScale = false;
-
-    function toggleScale() {
-      useLogScale = !useLogScale;
-      document.getElementById("scale-toggle").style.background = useLogScale ? "#38bdf8" : "#334155";
-      document.getElementById("scale-toggle").style.color = useLogScale ? "#0f172a" : "#e2e8f0";
-      const activeRange = document.querySelector(".range-btn.active").dataset.range;
-      loadStatusCodes(activeRange);
-    }
-
-    async function loadStatusCodes(range = "hour") {
-      const thresholds = { minute: 10, hour: 100, day: 1200 };
-      const res = await fetch(`${API}/stats/status-codes-over-time?granularity=${range}`);
-      const data = await res.json();
-
-      const limit = parseInt(document.getElementById("status-limit").value) || 60;
-      if (data.labels.length > limit) {
-        data.labels = data.labels.slice(-limit);
-        data.datasets = data.datasets.map(d => ({ ...d, data: d.data.slice(-limit) }));
-      }
-
-      const colors = ["#38bdf8","#22c55e","#fbbf24","#f87171","#c084fc","#14b8a6","#f97316","#e11d48"];
-
-      const datasets = data.datasets.map((dataset, index) => ({
-        label: dataset.label,
-        data: dataset.data.map(v => (v === null || v === undefined || v < 1) ? (useLogScale ? 0.1 : 0) : v),
-        borderColor: colors[index % colors.length],
-        parsing: false,
-        normalized: true,
+  trafficChart = new Chart(document.getElementById("trafficChart"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        label: "Requests",
+        data: counts,
+        borderColor: "#38bdf8",
+        backgroundColor: "rgba(56,189,248,0.1)",
+        fill: true,
         tension: 0.4,
         pointRadius: 0,
-        pointHoverRadius: 8,
-        hitRadius: 10,
         borderWidth: 2,
-        spanGaps: true,
-      }));
-
-      datasets.push({
-        label: `Threshold (${thresholds[range]})`,
-        data: new Array(data.labels.length).fill(thresholds[range]),
-        borderColor: "#ff4d4f",
-        borderDash: [8, 8],
-        borderWidth: 2,
-        pointRadius: 0,
-        tension: 0,
-      });
-
-      const labels = data.labels.map(l => l.replace("T", " "));
-
-      if (statusChart) {
-        statusChart.data.labels = labels;
-        statusChart.data.datasets = datasets;
-        statusChart.options.scales.y.type = useLogScale ? "logarithmic" : "linear";
-        statusChart.options.scales.y.min = useLogScale ? 0.09 : 0;
-        statusChart.update("none");
-        return;
+      }]
+    },
+    options: {
+      animation: false,
+      plugins: { legend: { labels: { color: "#e2e8f0" } } },
+      scales: {
+        x: { ticks: { color: "#64748b", maxTicksLimit: 12 } },
+        y: { beginAtZero: true, ticks: { color: "#64748b" } }
       }
+    }
+  });
+}
 
-      const container = document.getElementById("statusChartContainer");
-      const width = Math.max(data.labels.length * 25, container.parentElement.offsetWidth);
-      container.style.width = width + "px";
-      container.style.height = "400px";
-      const canvas = document.getElementById("statusChart");
-      canvas.width = width;
-      canvas.height = 400;
+async function loadStatusCodes(range = "hour") {
+  const thresholds = { minute: 10, hour: 100, day: 1200 };
+  const res = await fetch(`${API}/stats/status-codes-over-time?granularity=${range}`);
+  const data = await res.json();
 
-      statusChart = new Chart(canvas, {
-        type: "line",
-        data: { labels, datasets },
-        options: {
-          responsive: false,
-          animation: false,
-          parsing: false,
-          normalized: true,
-          interaction: { mode: "point", intersect: true },
-          plugins: {
-            legend: { labels: { color: "#e2e8f0" } },
-            tooltip: {
-              backgroundColor: "#1e293b",
-              titleColor: "#94a3b8",
-              bodyColor: "#e2e8f0",
-              borderColor: "#334155",
-              borderWidth: 1,
-              padding: 10,
-              callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y}` }
-            }
-          },
-          scales: {
-            x: { ticks: { color: "#64748b", maxRotation: 45, minRotation: 45, autoSkip: false } },
-            y: {
-              type: useLogScale ? "logarithmic" : "linear",
-              min: useLogScale ? 0.09 : 0,
-              ticks: {
-                color: "#64748b",
-                callback: value => (useLogScale && value < 1) ? null : value
-              }
-            }
+  const limit = parseInt(document.getElementById("status-limit").value) || 60;
+  if (data.labels.length > limit) {
+    data.labels = data.labels.slice(-limit);
+    data.datasets = data.datasets.map(d => ({ ...d, data: d.data.slice(-limit) }));
+  }
+
+  const colors = ["#38bdf8","#22c55e","#fbbf24","#f87171","#c084fc","#14b8a6","#f97316","#e11d48"];
+  const labels = data.labels.map(l => l.replace("T", " "));
+
+  const datasets = data.datasets.map((dataset, index) => ({
+    label: dataset.label,
+    data: dataset.data.map(v => (!v || v < 1) ? (useLogScale ? 0.1 : 0) : v),
+    borderColor: colors[index % colors.length],
+    tension: 0.4,
+    pointRadius: 0,
+    pointHoverRadius: 8,
+    hitRadius: 10,
+    borderWidth: 2,
+    spanGaps: true,
+  }));
+
+  datasets.push({
+    label: `Threshold (${thresholds[range]})`,
+    data: new Array(labels.length).fill(thresholds[range]),
+    borderColor: "#ff4d4f",
+    borderDash: [8, 8],
+    borderWidth: 2,
+    pointRadius: 0,
+    tension: 0,
+  });
+
+  if (statusChart) {
+    statusChart.data.labels = labels;
+    statusChart.data.datasets = datasets;
+    statusChart.options.scales.y.type = useLogScale ? "logarithmic" : "linear";
+    statusChart.options.scales.y.min = useLogScale ? 0.09 : 0;
+    statusChart.update("none");
+    return;
+  }
+
+  const container = document.getElementById("statusChartContainer");
+  const width = Math.max(labels.length * 25, container.parentElement.offsetWidth);
+  container.style.width = width + "px";
+  container.style.height = "400px";
+  const canvas = document.getElementById("statusChart");
+  canvas.width = width;
+  canvas.height = 400;
+
+  statusChart = new Chart(canvas, {
+    type: "line",
+    data: { labels, datasets },
+    options: {
+      responsive: false,
+      animation: false,
+      interaction: { mode: "point", intersect: true },
+      plugins: {
+        legend: { labels: { color: "#e2e8f0" } },
+        tooltip: {
+          backgroundColor: "#1e293b",
+          titleColor: "#94a3b8",
+          bodyColor: "#e2e8f0",
+          borderColor: "#334155",
+          borderWidth: 1,
+          padding: 10,
+          callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y}` }
+        }
+      },
+      scales: {
+        x: { ticks: { color: "#64748b", maxRotation: 45, minRotation: 45, autoSkip: false } },
+        y: {
+          type: useLogScale ? "logarithmic" : "linear",
+          min: useLogScale ? 0.09 : 0,
+          ticks: {
+            color: "#64748b",
+            callback: value => (useLogScale && value < 1) ? null : value
           }
         }
-      });
+      }
     }
+  });
+}
 
     async function loadTopIPs() {
       const res = await fetch(`${API}/stats/top-ips?limit=10`);
