@@ -414,12 +414,8 @@ async function loadStatusCodes(range = "hour") {
   });
 
   if (statusChart) {
-    statusChart.data.labels = labels;
-    statusChart.data.datasets = datasets;
-    statusChart.options.scales.y.type = useLogScale ? "logarithmic" : "linear";
-    statusChart.options.scales.y.min = useLogScale ? 0.09 : 0;
-    statusChart.update("none");
-    return;
+    statusChart.destroy();
+    statusChart = null;
   }
 
   const container = document.getElementById("statusChartContainer");
