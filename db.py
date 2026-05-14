@@ -5,7 +5,6 @@ from datetime import datetime
 from sqlalchemy import DateTime, Integer, String, UniqueConstraint, create_engine
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
-from sqlalchemy.pool import NullPool
 
 from env import load_dotenv
 from log import log_activity, log_exception
@@ -46,10 +45,14 @@ class LogRecord(Base):
     user_agent: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
+# Singleton engine — created once, reused across requests
 engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,
-    poolclass=NullPool,
+    pool_size=5,
+    max_overflow=10,
+    pool_timeout=30,
+    pool_recycle=300,
 )
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
@@ -105,39 +108,27 @@ def _entry_to_row(entry: LogEntry) -> dict:
 def insert_entry(entry: LogEntry):
     with write_connection() as session:
         statement = pg_insert(LogRecord).values(_entry_to_row(entry))
-        statement = statement.on_conflict_do_nothing(
-            constraint="uq_logs_identity",
-        )
+        statement = statement.on_conflict_do_nothing(constraint="uq_logs_identity")
         session.execute(statement)
 
 
 def insert_many(entries):
     rows = [_entry_to_row(entry) for entry in entries]
-
     if not rows:
         log_activity("insert_many called with no entries")
         return 0
 
     inserted_total = 0
-
     for start in range(0, len(rows), BULK_INSERT_BATCH_SIZE):
         batch = rows[start:start + BULK_INSERT_BATCH_SIZE]
         with write_connection() as session:
             statement = pg_insert(LogRecord).values(batch)
-            statement = statement.on_conflict_do_nothing(
-                constraint="uq_logs_identity",
-            )
+            statement = statement.on_conflict_do_nothing(constraint="uq_logs_identity")
             result = session.execute(statement)
-
         inserted = result.rowcount if result.rowcount is not None and result.rowcount >= 0 else 0
         inserted_total += inserted
 
-    log_activity(
-        "Bulk insert completed: received=%s inserted=%s batch_size=%s",
-        len(rows),
-        inserted_total,
-        BULK_INSERT_BATCH_SIZE,
-    )
+    log_activity("Bulk insert completed: received=%s inserted=%s", len(rows), inserted_total)
     return inserted_total
 
 

@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -16,6 +17,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 INDEX_PATH = os.path.join(BASE_DIR, "frontend/index.html")
 VALID_GRANULARITIES = {"minute", "hour", "day"}
 stats_service = StatsService()
+
+CACHE_HEADERS = {"Cache-Control": "public, s-maxage=30, stale-while-revalidate=60"}
 
 
 @asynccontextmanager
@@ -30,6 +33,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 
 @app.middleware("http")
@@ -41,21 +45,14 @@ async def log_requests(request: Request, call_next):
         duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
         log_activity(
             "HTTP request completed: method=%s path=%s status=%s client=%s duration_ms=%s",
-            request.method,
-            request.url.path,
-            response.status_code,
-            client_ip,
-            duration_ms,
+            request.method, request.url.path, response.status_code, client_ip, duration_ms,
         )
         return response
     except Exception:
         duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
         log_exception(
             "HTTP request failed: method=%s path=%s client=%s duration_ms=%s",
-            request.method,
-            request.url.path,
-            client_ip,
-            duration_ms,
+            request.method, request.url.path, client_ip, duration_ms,
         )
         raise
 
@@ -63,10 +60,7 @@ async def log_requests(request: Request, call_next):
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     log_activity("Validation error on path=%s details=%s", request.url.path, exc.errors())
-    return JSONResponse(
-        status_code=422,
-        content={"detail": "Invalid request parameters", "errors": exc.errors()},
-    )
+    return JSONResponse(status_code=422, content={"detail": "Invalid request parameters", "errors": exc.errors()})
 
 
 @app.exception_handler(SQLAlchemyError)
@@ -91,6 +85,10 @@ def require_granularity(granularity: str) -> str:
     return granularity
 
 
+def json_cached(data):
+    return JSONResponse(content=data, headers=CACHE_HEADERS)
+
+
 @app.get("/")
 def index():
     if not os.path.exists(INDEX_PATH):
@@ -101,32 +99,32 @@ def index():
 
 @app.get("/stats/summary")
 def get_summary():
-    return stats_service.get_summary()
+    return json_cached(stats_service.get_summary())
 
 
 @app.get("/stats/top-ips")
 def get_top_ips(limit: int = Query(default=10, ge=1, le=100)):
-    return stats_service.get_top_ips(limit)
+    return json_cached(stats_service.get_top_ips(limit))
 
 
 @app.get("/stats/top-urls")
 def get_top_urls(limit: int = Query(default=10, ge=1, le=100)):
-    return stats_service.get_top_urls(limit)
+    return json_cached(stats_service.get_top_urls(limit))
 
 
 @app.get("/stats/status-codes")
 def get_status_codes():
-    return stats_service.get_status_codes()
+    return json_cached(stats_service.get_status_codes())
 
 
 @app.get("/stats/traffic")
 def get_traffic(granularity: str = "hour", ip: str = None):
-    return stats_service.get_traffic(require_granularity(granularity), ip)
+    return json_cached(stats_service.get_traffic(require_granularity(granularity), ip))
 
 
 @app.get("/stats/anomalies")
 def get_anomalies():
-    return stats_service.get_anomalies()
+    return json_cached(stats_service.get_anomalies())
 
 
 @app.get("/stats/search")
@@ -138,12 +136,13 @@ def search_logs(
     time_to: str = None,
     limit: int = Query(default=100, ge=1, le=1000),
 ):
+    # search is not cached
     return stats_service.search_logs(ip, path, status, time_from, time_to, limit)
 
 
 @app.get("/stats/status-codes-over-time")
 def get_status_codes_over_time(granularity: str = "hour"):
-    return stats_service.get_status_codes_over_time(require_granularity(granularity))
+    return json_cached(stats_service.get_status_codes_over_time(require_granularity(granularity)))
 
 
 @app.get("/stats/logs")

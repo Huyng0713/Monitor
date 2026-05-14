@@ -264,6 +264,24 @@
   <script>
     const API = "";
 
+    Chart.defaults.animation = false;
+
+    function makeDataset(label, data, color, extra = {}) {
+      return {
+        label,
+        data,
+        borderColor: color,
+        backgroundColor: color + "1a",
+        parsing: false,
+        normalized: true,
+        pointRadius: 0,
+        pointHoverRadius: 6,
+        borderWidth: 2,
+        tension: 0.4,
+        ...extra,
+      };
+    }
+
     async function loadThresholdIPs() {
       const res = await fetch(`${API}/stats/anomalies`);
       const data = await res.json();
@@ -286,32 +304,18 @@
       function renderPage(page) {
         const start = page * pageSize;
         const pageAlerts = alerts.slice(start, start + pageSize);
-
         container.innerHTML = pageAlerts.map(a => `
-      <div style="
-        padding: 10px 16px;
-        margin-bottom: 8px;
-        border-radius: 8px;
-        border-left: 4px solid #f87171;
-        background: rgba(248,113,113,0.1);
-        color: #e2e8f0;
-        font-size: 14px;
-      ">${a.message}</div>
-    `).join("");
-
+          <div style="padding:10px 16px;margin-bottom:8px;border-radius:8px;border-left:4px solid #f87171;background:rgba(248,113,113,0.1);color:#e2e8f0;font-size:14px;">${a.message}</div>
+        `).join("");
         container.innerHTML += `
-      <div style="display:flex; align-items:center; gap:12px; margin-top:12px;">
-        <button onclick="thresholdPage(${page - 1})" ${page === 0 ? 'disabled' : ''}
-          style="padding:6px 14px; background:#334155; border:none; border-radius:8px; color:#e2e8f0; cursor:pointer; opacity:${page === 0 ? 0.4 : 1};">
-          ← Prev
-        </button>
-        <span style="color:#64748b; font-size:13px;">Page ${page + 1} of ${totalPages} (${alerts.length} total)</span>
-        <button onclick="thresholdPage(${page + 1})" ${page === totalPages - 1 ? 'disabled' : ''}
-          style="padding:6px 14px; background:#334155; border:none; border-radius:8px; color:#e2e8f0; cursor:pointer; opacity:${page === totalPages - 1 ? 0.4 : 1};">
-          Next →
-        </button>
-      </div>
-    `;
+          <div style="display:flex;align-items:center;gap:12px;margin-top:12px;">
+            <button onclick="thresholdPage(${page - 1})" ${page === 0 ? 'disabled' : ''}
+              style="padding:6px 14px;background:#334155;border:none;border-radius:8px;color:#e2e8f0;cursor:pointer;opacity:${page === 0 ? 0.4 : 1};">← Prev</button>
+            <span style="color:#64748b;font-size:13px;">Page ${page + 1} of ${totalPages} (${alerts.length} total)</span>
+            <button onclick="thresholdPage(${page + 1})" ${page === totalPages - 1 ? 'disabled' : ''}
+              style="padding:6px 14px;background:#334155;border:none;border-radius:8px;color:#e2e8f0;cursor:pointer;opacity:${page === totalPages - 1 ? 0.4 : 1};">Next →</button>
+          </div>
+        `;
       }
 
       window.thresholdPage = function (page) {
@@ -330,49 +334,39 @@
       document.getElementById("unique-ips").textContent = data.unique_ips.toLocaleString();
       document.getElementById("errors").textContent = data.errors.toLocaleString();
     }
+
     let trafficChart;
 
     async function loadTraffic(ip = "") {
       const res = await fetch(`${API}/stats/traffic?granularity=hour&ip=${ip}`);
       const data = await res.json();
+      const points = data.map(d => ({ x: d.period.replace("T", " "), y: d.count }));
+
       if (trafficChart) {
-        trafficChart.destroy();
+        trafficChart.data.datasets[0].data = points;
+        trafficChart.update("none");
+        return;
       }
 
       trafficChart = new Chart(document.getElementById("trafficChart"), {
         type: "line",
         data: {
-          labels: data.map(d => d.period.replace("T", " ")), datasets: [{
-            label: "Requests",
-            data: data.map(d => d.count),
-            borderColor: "#38bdf8",
-            backgroundColor: "rgba(56,189,248,0.1)",
-            fill: true,
-            tension: 0.4,
-          }]
+          datasets: [makeDataset("Requests", points, "#38bdf8", { fill: true })]
         },
         options: {
+          parsing: false,
+          normalized: true,
+          animation: false,
           plugins: { legend: { labels: { color: "#e2e8f0" } } },
           scales: {
-            x: {
-
-              ticks: {
-                color: "#64748b",
-                maxTicksLimit: 12
-              }
-            }, y: {
-              beginAtZero: true,
-              ticks: {
-                color: "#64748b"
-              }
-            }
+            x: { type: "category", ticks: { color: "#64748b", maxTicksLimit: 12 } },
+            y: { beginAtZero: true, ticks: { color: "#64748b" } }
           }
         }
       });
     }
 
     let statusChart;
-
     let useLogScale = false;
 
     function toggleScale() {
@@ -383,200 +377,115 @@
       loadStatusCodes(activeRange);
     }
 
-    async function loadStatusCodes(range = "minute") {
-
-
-      const thresholds = {
-        minute: 10,
-        hour: 100,
-        day: 1200
-      };
-
-      const res = await fetch(
-        `${API}/stats/status-codes-over-time?granularity=${range}`
-      );
-
+    async function loadStatusCodes(range = "hour") {
+      const thresholds = { minute: 10, hour: 100, day: 1200 };
+      const res = await fetch(`${API}/stats/status-codes-over-time?granularity=${range}`);
       const data = await res.json();
+
       const limit = parseInt(document.getElementById("status-limit").value) || 60;
       if (data.labels.length > limit) {
         data.labels = data.labels.slice(-limit);
-        data.datasets = data.datasets.map(d => ({
-          ...d,
-          data: d.data.slice(-limit)
-        }));
+        data.datasets = data.datasets.map(d => ({ ...d, data: d.data.slice(-limit) }));
       }
 
-      if (statusChart) {
-        statusChart.destroy();
-      }
+      const colors = ["#38bdf8","#22c55e","#fbbf24","#f87171","#c084fc","#14b8a6","#f97316","#e11d48"];
 
-      // generate datasets dynamically
-      const datasets = data.datasets.map((dataset, index) => {
-
-        const colors = [
-          "#38bdf8",
-          "#22c55e",
-          "#fbbf24",
-          "#f87171",
-          "#c084fc",
-          "#14b8a6",
-          "#f97316",
-          "#e11d48"
-        ];
-
-        return {
-          label: dataset.label,
-          data: dataset.data.map(v => {
-            if (v === null || v === undefined || v < 1) {
-              return useLogScale ? 0.1 : 0;
-            }
-            return v;
-          }),
-          borderColor: colors[index % colors.length],
-          tension: 0.4,
-          pointRadius: 0,
-          pointHoverRadius: 8,
-          hitRadius: 10,
-          borderWidth: 2,
-          spanGaps: true,
-        };
-      });
+      const datasets = data.datasets.map((dataset, index) => ({
+        label: dataset.label,
+        data: dataset.data.map(v => (v === null || v === undefined || v < 1) ? (useLogScale ? 0.1 : 0) : v),
+        borderColor: colors[index % colors.length],
+        parsing: false,
+        normalized: true,
+        tension: 0.4,
+        pointRadius: 0,
+        pointHoverRadius: 8,
+        hitRadius: 10,
+        borderWidth: 2,
+        spanGaps: true,
+      }));
 
       datasets.push({
-
         label: `Threshold (${thresholds[range]})`,
-
-        data: new Array(data.labels.length)
-          .fill(thresholds[range]),
-
+        data: new Array(data.labels.length).fill(thresholds[range]),
         borderColor: "#ff4d4f",
         borderDash: [8, 8],
         borderWidth: 2,
         pointRadius: 0,
-        tension: 0
+        tension: 0,
       });
+
+      const labels = data.labels.map(l => l.replace("T", " "));
+
+      if (statusChart) {
+        statusChart.data.labels = labels;
+        statusChart.data.datasets = datasets;
+        statusChart.options.scales.y.type = useLogScale ? "logarithmic" : "linear";
+        statusChart.options.scales.y.min = useLogScale ? 0.09 : 0;
+        statusChart.update("none");
+        return;
+      }
 
       const container = document.getElementById("statusChartContainer");
       const width = Math.max(data.labels.length * 25, container.parentElement.offsetWidth);
       container.style.width = width + "px";
       container.style.height = "400px";
-
       const canvas = document.getElementById("statusChart");
       canvas.width = width;
       canvas.height = 400;
-      statusChart = new Chart(
-        document.getElementById("statusChart"),
 
-        {
-
-          type: "line",
-
-          data: {
-            labels: data.labels.map(l => l.replace("T", " ")),
-            datasets: datasets
+      statusChart = new Chart(canvas, {
+        type: "line",
+        data: { labels, datasets },
+        options: {
+          responsive: false,
+          animation: false,
+          parsing: false,
+          normalized: true,
+          interaction: { mode: "point", intersect: true },
+          plugins: {
+            legend: { labels: { color: "#e2e8f0" } },
+            tooltip: {
+              backgroundColor: "#1e293b",
+              titleColor: "#94a3b8",
+              bodyColor: "#e2e8f0",
+              borderColor: "#334155",
+              borderWidth: 1,
+              padding: 10,
+              callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y}` }
+            }
           },
-
-          options: {
-            responsive: false,
-            interaction: {
-              mode: "point",
-              intersect: true,
-            },
-            plugins: {
-              legend: {
-                labels: {
-                  color: "#e2e8f0"
-                }
-              },
-              tooltip: {
-                backgroundColor: "#1e293b",
-                titleColor: "#94a3b8",
-                bodyColor: "#e2e8f0",
-                borderColor: "#334155",
-                borderWidth: 1,
-                padding: 10,
-                callbacks: {
-                  label: function (context) {
-                    return ` ${context.dataset.label}: ${context.parsed.y}`;
-                  }
-                }
+          scales: {
+            x: { ticks: { color: "#64748b", maxRotation: 45, minRotation: 45, autoSkip: false } },
+            y: {
+              type: useLogScale ? "logarithmic" : "linear",
+              min: useLogScale ? 0.09 : 0,
+              ticks: {
+                color: "#64748b",
+                callback: value => (useLogScale && value < 1) ? null : value
               }
-            },
-
-            scales: {
-
-              x: {
-                ticks: {
-                  color: "#64748b",
-                  maxRotation: 45,
-                  minRotation: 45,
-                  autoSkip: false,
-                }
-              },
-
-              y: {
-                type: useLogScale ? "logarithmic" : "linear",
-                min: useLogScale ? 0.09 : 0,
-                ticks: {
-                  color: "#64748b",
-                  callback: function (value) {
-                    if (useLogScale && value < 1) return null;
-                    return value;
-                  }
-                }
-              }
-
             }
           }
         }
-      );
+      });
     }
-    async function loadTopIPs() {
 
+    async function loadTopIPs() {
       const res = await fetch(`${API}/stats/top-ips?limit=10`);
       const data = await res.json();
 
       new Chart(document.getElementById("ipChart"), {
-
         type: "bar",
-
         data: {
           labels: data.map(d => d.ip),
-
-          datasets: [{
-            label: "Requests",
-            data: data.map(d => d.count),
-            backgroundColor: "#38bdf8",
-          }]
+          datasets: [{ label: "Requests", data: data.map(d => d.count), backgroundColor: "#38bdf8" }]
         },
-
         options: {
-
+          animation: false,
           indexAxis: "y",
-
-          plugins: {
-            legend: {
-              labels: {
-                color: "#e2e8f0"
-              }
-            }
-          },
-
+          plugins: { legend: { labels: { color: "#e2e8f0" } } },
           scales: {
-
-            x: {
-              beginAtZero: true,
-
-              ticks: {
-                color: "#64748b"
-              }
-            },
-
-            y: {
-              ticks: {
-                color: "#64748b"
-              }
-            }
+            x: { beginAtZero: true, ticks: { color: "#64748b" } },
+            y: { ticks: { color: "#64748b" } }
           }
         }
       });
@@ -586,79 +495,56 @@
       const res = await fetch(`${API}/stats/status-codes`);
       const data = await res.json();
       const errors = data.filter(d => d.status >= 400);
-      const tbody = document.getElementById("error-table");
-      tbody.innerHTML = errors.map(d => `
+      document.getElementById("error-table").innerHTML = errors.map(d => `
         <tr>
-          <td style="padding: 8px; color:#f87171;">${d.status}</td>
-          <td style="padding: 8px; color:#e2e8f0;">${d.count.toLocaleString()}</td>
+          <td style="padding:8px;color:#f87171;">${d.status}</td>
+          <td style="padding:8px;color:#e2e8f0;">${d.count.toLocaleString()}</td>
         </tr>
       `).join("");
     }
+
     async function loadAnomalies() {
       const res = await fetch(`${API}/stats/anomalies`);
       const data = await res.json();
-
       const alerts = [];
 
-      data.high_frequency.forEach(d => {
-        alerts.push({
-          level: "red",
-          message: `🚨 IP <strong>${d.ip}</strong> sent <strong>${d.count}</strong> requests in 1 minute at ${d.minute.replace("T", " ")}`
-        });
-      });
-
-      data.many_404s.forEach(d => {
-        alerts.push({
-          level: "yellow",
-          message: `⚠ IP <strong>${d.ip}</strong> triggered <strong>${d.count}</strong> 404 errors`
-        });
-      });
-
-      data.many_500s.forEach(d => {
-        alerts.push({
-          level: "red",
-          message: `🔥 IP <strong>${d.ip}</strong> caused <strong>${d.count}</strong> server errors (500)`
-        });
-      });
+      data.high_frequency.forEach(d => alerts.push({
+        level: "red",
+        message: `🚨 IP <strong>${d.ip}</strong> sent <strong>${d.count}</strong> requests in 1 minute at ${d.minute.replace("T", " ")}`
+      }));
+      data.many_404s.forEach(d => alerts.push({
+        level: "yellow",
+        message: `⚠ IP <strong>${d.ip}</strong> triggered <strong>${d.count}</strong> 404 errors`
+      }));
+      data.many_500s.forEach(d => alerts.push({
+        level: "red",
+        message: `🔥 IP <strong>${d.ip}</strong> caused <strong>${d.count}</strong> server errors (500)`
+      }));
 
       const container = document.getElementById("anomaly-list");
+      if (!container) return;
 
       if (alerts.length === 0) {
         container.innerHTML = `<p style="color:#34d399;">✓ No anomalies detected</p>`;
         return;
       }
 
-      let pageSize = parseInt(document.getElementById("anomaly-page-size").value) || 5;
+      let pageSize = parseInt(document.getElementById("anomaly-page-size")?.value) || 5;
       let currentPage = 0;
       const totalPages = Math.ceil(alerts.length / pageSize);
 
       function renderPage(page) {
-        const start = page * pageSize;
-        const pageAlerts = alerts.slice(start, start + pageSize);
-
+        const pageAlerts = alerts.slice(page * pageSize, page * pageSize + pageSize);
         container.innerHTML = pageAlerts.map(a => `
-          <div style="
-            padding: 10px 16px;
-            margin-bottom: 8px;
-            border-radius: 8px;
-            border-left: 4px solid ${a.level === 'red' ? '#f87171' : '#fbbf24'};
-            background: ${a.level === 'red' ? 'rgba(248,113,113,0.1)' : 'rgba(251,191,36,0.1)'};
-            color: #e2e8f0;
-            font-size: 14px;
-          ">${a.message}</div>
+          <div style="padding:10px 16px;margin-bottom:8px;border-radius:8px;border-left:4px solid ${a.level === 'red' ? '#f87171' : '#fbbf24'};background:${a.level === 'red' ? 'rgba(248,113,113,0.1)' : 'rgba(251,191,36,0.1)'};color:#e2e8f0;font-size:14px;">${a.message}</div>
         `).join("");
-
         container.innerHTML += `
-          <div style="display:flex; align-items:center; gap:12px; margin-top:12px;">
+          <div style="display:flex;align-items:center;gap:12px;margin-top:12px;">
             <button onclick="anomalyPage(${page - 1})" ${page === 0 ? 'disabled' : ''}
-              style="padding:6px 14px; background:#334155; border:none; border-radius:8px; color:#e2e8f0; cursor:pointer; opacity:${page === 0 ? 0.4 : 1};">
-              ← Prev
-            </button>
-            <span style="color:#64748b; font-size:13px;">Page ${page + 1} of ${totalPages} (${alerts.length} total)</span>
+              style="padding:6px 14px;background:#334155;border:none;border-radius:8px;color:#e2e8f0;cursor:pointer;opacity:${page === 0 ? 0.4 : 1};">← Prev</button>
+            <span style="color:#64748b;font-size:13px;">Page ${page + 1} of ${totalPages} (${alerts.length} total)</span>
             <button onclick="anomalyPage(${page + 1})" ${page === totalPages - 1 ? 'disabled' : ''}
-              style="padding:6px 14px; background:#334155; border:none; border-radius:8px; color:#e2e8f0; cursor:pointer; opacity:${page === totalPages - 1 ? 0.4 : 1};">
-              Next →
-            </button>
+              style="padding:6px 14px;background:#334155;border:none;border-radius:8px;color:#e2e8f0;cursor:pointer;opacity:${page === totalPages - 1 ? 0.4 : 1};">Next →</button>
           </div>
         `;
       }
@@ -671,8 +557,6 @@
 
       renderPage(currentPage);
     }
-
-
 
     async function runSearch() {
       const ip = document.getElementById("search-ip").value;
@@ -690,26 +574,21 @@
 
       const res = await fetch(url);
       const data = await res.json();
-
-      const statusColor = (s) => s >= 500 ? "#f87171" : s >= 400 ? "#fbbf24" : "#34d399";
-
-
+      const statusColor = s => s >= 500 ? "#f87171" : s >= 400 ? "#fbbf24" : "#34d399";
 
       document.getElementById("search-results").innerHTML = data.map(r => `
         <tr style="border-bottom:1px solid #1e293b;">
-          <td style="padding:8px; color:#38bdf8;">${r.ip}</td>
-          <td style="padding:8px; color:#64748b;">${r.time.replace("T", " ")}</td>
-          <td style="padding:8px; color:#94a3b8;">${r.method}</td>
-          <td style="padding:8px; color:#e2e8f0; max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${r.path}</td>
-          <td style="padding:8px; color:${statusColor(r.status)};">${r.status}</td>
-          <td style="padding:8px; color:#64748b;">${r.size}</td>
+          <td style="padding:8px;color:#38bdf8;">${r.ip}</td>
+          <td style="padding:8px;color:#64748b;">${r.time.replace("T", " ")}</td>
+          <td style="padding:8px;color:#94a3b8;">${r.method}</td>
+          <td style="padding:8px;color:#e2e8f0;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.path}</td>
+          <td style="padding:8px;color:${statusColor(r.status)};">${r.status}</td>
+          <td style="padding:8px;color:#64748b;">${r.size}</td>
         </tr>
       `).join("");
 
       document.getElementById("search-count").textContent = `Showing ${data.length} results`;
     }
-
-
 
     function clearSearch() {
       document.getElementById("search-ip").value = "";
@@ -721,56 +600,45 @@
       document.getElementById("search-count").textContent = "";
     }
 
-    document.querySelectorAll(".range-btn")
-      .forEach(btn => {
-
-        btn.addEventListener("click", () => {
-
-          document.querySelectorAll(".range-btn")
-            .forEach(b => b.classList.remove("active"));
-
-          btn.classList.add("active");
-
-          loadStatusCodes(btn.dataset.range);
-        });
-      });
-    document.getElementById("traffic-ip-search")
-      .addEventListener("input", async function () {
-        const ip = this.value.trim();
-        if (ip === "" || /^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) {
-          loadTraffic(ip);
-        }
-      });
-    document.getElementById("status-limit").addEventListener("change", () => {
-      const activeRange = document.querySelector(".range-btn.active").dataset.range;
-      loadStatusCodes(activeRange);
-    });
-    document.getElementById("threshold-page-size").addEventListener("change", () => {
-      loadThresholdIPs();
-    });
-
     async function loadSystemLogs() {
       const res = await fetch(`${API}/stats/logs`);
       const data = await res.json();
       const container = document.getElementById("system-logs");
-
-      const colorLine = (line) => {
+      const colorLine = line => {
         if (line.includes("[ERROR]")) return `<span style="color:#f87171;">${line}</span>`;
         if (line.includes("[WARNING]")) return `<span style="color:#fbbf24;">${line}</span>`;
         if (line.includes("[INFO]")) return `<span style="color:#34d399;">${line}</span>`;
         return `<span style="color:#64748b;">${line}</span>`;
       };
-
       container.innerHTML = data.lines.map(l => colorLine(l.trimEnd())).join("<br>");
       container.scrollTop = container.scrollHeight;
     }
 
-    // Instead of 8 parallel calls, load critical ones first
+    document.querySelectorAll(".range-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".range-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        loadStatusCodes(btn.dataset.range);
+      });
+    });
+
+    document.getElementById("traffic-ip-search").addEventListener("input", async function () {
+      const ip = this.value.trim();
+      if (ip === "" || /^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) loadTraffic(ip);
+    });
+
+    document.getElementById("status-limit").addEventListener("change", () => {
+      loadStatusCodes(document.querySelector(".range-btn.active").dataset.range);
+    });
+
+    document.getElementById("threshold-page-size").addEventListener("change", () => {
+      loadThresholdIPs();
+    });
+
+    // Load critical first, defer heavier ones
     loadSummary();
     loadErrorBreakdown();
     loadTopIPs();
-
-    // Defer heavier ones
     setTimeout(() => {
       loadTraffic();
       loadStatusCodes("hour");
