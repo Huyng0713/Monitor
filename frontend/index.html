@@ -414,17 +414,21 @@ async function loadStatusCodes(range = "hour") {
   });
 
   if (statusChart) {
-    statusChart.destroy();
-    statusChart = null;
-  }
+  statusChart.destroy();
+  statusChart = null;
+}
 
-  const container = document.getElementById("statusChartContainer");
-  const width = Math.max(labels.length * 25, container.parentElement.offsetWidth);
-  container.style.width = width + "px";
-  container.style.height = "400px";
-  const canvas = document.getElementById("statusChart");
-  canvas.width = width;
-  canvas.height = 400;
+const container = document.getElementById("statusChartContainer");
+const width = Math.max(labels.length * 25, container.parentElement.offsetWidth);
+container.style.width = width + "px";
+container.style.height = "400px";
+
+const oldCanvas = document.getElementById("statusChart");
+const newCanvas = document.createElement("canvas");
+newCanvas.id = "statusChart";
+newCanvas.width = width;
+newCanvas.height = 400;
+oldCanvas.parentNode.replaceChild(newCanvas, oldCanvas);
 
   statusChart = new Chart(canvas, {
     type: "line",
