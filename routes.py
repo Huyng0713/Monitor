@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+from collections import deque
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -118,8 +119,12 @@ def get_status_codes():
 
 
 @app.get("/stats/traffic")
-def get_traffic(granularity: str = "hour", ip: str = None):
-    return json_cached(stats_service.get_traffic(require_granularity(granularity), ip))
+def get_traffic(
+    granularity: str = "hour",
+    ip: str = None,
+    limit: int = Query(default=500, ge=1, le=2000),
+):
+    return json_cached(stats_service.get_traffic(require_granularity(granularity), ip, limit))
 
 
 @app.get("/stats/anomalies")
@@ -141,8 +146,11 @@ def search_logs(
 
 
 @app.get("/stats/status-codes-over-time")
-def get_status_codes_over_time(granularity: str = "hour"):
-    return json_cached(stats_service.get_status_codes_over_time(require_granularity(granularity)))
+def get_status_codes_over_time(
+    granularity: str = "hour",
+    limit: int = Query(default=60, ge=1, le=1440),
+):
+    return json_cached(stats_service.get_status_codes_over_time(require_granularity(granularity), limit))
 
 
 @app.get("/stats/logs")
@@ -150,9 +158,9 @@ def get_system_logs(lines: int = Query(default=50, ge=1, le=500)):
     log_paths = get_log_paths()
     try:
         with open(log_paths["error"], "r", encoding="utf-8") as file_obj:
-            all_lines = file_obj.readlines()
-        log_activity("System log tail requested: lines=%s returned=%s", lines, min(lines, len(all_lines)))
-        return {"lines": all_lines[-lines:]}
+            recent_lines = list(deque(file_obj, maxlen=lines))
+        log_activity("System log tail requested: lines=%s returned=%s", lines, len(recent_lines))
+        return {"lines": recent_lines}
     except FileNotFoundError:
         log_file_issue(logging.ERROR, "System log file missing: path=%s", log_paths["error"])
         return {"lines": ["No log file found yet."]}

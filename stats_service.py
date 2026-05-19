@@ -43,11 +43,21 @@ class StatsService:
             return session.execute(text(query), params or {}).mappings().all()
 
     def get_summary(self):
-        return self._cached("summary", lambda: {
-            "total_requests": self.fetch_scalar("SELECT COUNT(*) FROM logs"),
-            "unique_ips": self.fetch_scalar("SELECT COUNT(DISTINCT ip) FROM logs"),
-            "errors": self.fetch_scalar("SELECT COUNT(*) FROM logs WHERE status >= 400"),
-        })
+        return self._cached("summary", self._fetch_summary)
+
+    def _fetch_summary(self):
+        row = self.fetch_rows("""
+            SELECT
+                COUNT(*) AS total_requests,
+                COUNT(DISTINCT ip) AS unique_ips,
+                COUNT(*) FILTER (WHERE status >= 400) AS errors
+            FROM logs
+        """)[0]
+        return {
+            "total_requests": row["total_requests"],
+            "unique_ips": row["unique_ips"],
+            "errors": row["errors"],
+        }
 
     def get_top_ips(self, limit: int):
         return self._cached(f"top_ips:{limit}", lambda: [
@@ -76,21 +86,36 @@ class StatsService:
             """)
         ])
 
-    def get_traffic(self, granularity: str, ip: str | None):
-        key = f"traffic:{granularity}:{ip or ''}"
-        return self._cached(key, lambda: self._fetch_traffic(granularity, ip))
+    def get_traffic(self, granularity: str, ip: str | None, limit: int):
+        key = f"traffic:{granularity}:{ip or ''}:{limit}"
+        return self._cached(key, lambda: self._fetch_traffic(granularity, ip, limit))
 
-    def _fetch_traffic(self, granularity: str, ip: str | None):
-        period_expr = self._period_expr(granularity)
-        params: dict[str, object] = {}
-        query = f"""
-            SELECT {period_expr} as period, COUNT(*) as count
-            FROM logs
-        """
+    def _fetch_traffic(self, granularity: str, ip: str | None, limit: int):
+        period_expr = self._period_expr(granularity, "l")
+        params: dict[str, object] = {"limit": limit}
+        where_clause = ""
         if ip:
-            query += " WHERE ip LIKE :ip"
+            where_clause = "WHERE l.ip LIKE :ip"
             params["ip"] = f"%{ip}%"
-        query += " GROUP BY period ORDER BY period"
+
+        query = f"""
+            WITH recent_periods AS (
+                SELECT period FROM (
+                    SELECT DISTINCT {period_expr} AS period
+                    FROM logs l
+                    {where_clause}
+                    ORDER BY period DESC
+                    LIMIT :limit
+                ) recent
+                ORDER BY period
+            )
+            SELECT recent_periods.period, COUNT(*) AS count
+            FROM logs l
+            JOIN recent_periods ON {period_expr} = recent_periods.period
+            {where_clause}
+            GROUP BY recent_periods.period
+            ORDER BY recent_periods.period
+        """
         rows = self.fetch_rows(query, params)
         return [{"period": row["period"], "count": row["count"]} for row in rows]
 
@@ -122,20 +147,33 @@ class StatsService:
             "many_500s": [{"ip": row["ip"], "count": row["count"]} for row in many_500],
         }
 
-    def get_status_codes_over_time(self, granularity: str):
-        return self._cached(f"status_over_time:{granularity}", lambda: self._fetch_status_codes_over_time(granularity))
+    def get_status_codes_over_time(self, granularity: str, limit: int):
+        return self._cached(
+            f"status_over_time:{granularity}:{limit}",
+            lambda: self._fetch_status_codes_over_time(granularity, limit),
+        )
 
-    def _fetch_status_codes_over_time(self, granularity: str):
-        period_expr = self._period_expr(granularity)
+    def _fetch_status_codes_over_time(self, granularity: str, limit: int):
+        period_expr = self._period_expr(granularity, "l")
         rows = self.fetch_rows(f"""
+            WITH recent_periods AS (
+                SELECT period FROM (
+                    SELECT DISTINCT {period_expr} AS period
+                    FROM logs l
+                    ORDER BY period DESC
+                    LIMIT :limit
+                ) recent
+                ORDER BY period
+            )
             SELECT
-                {period_expr} as period,
-                status,
-                COUNT(*) as count
-            FROM logs
-            GROUP BY period, status
-            ORDER BY period
-        """)
+                recent_periods.period AS period,
+                l.status,
+                COUNT(*) AS count
+            FROM logs l
+            JOIN recent_periods ON {period_expr} = recent_periods.period
+            GROUP BY recent_periods.period, l.status
+            ORDER BY recent_periods.period
+        """, {"limit": limit})
         grouped = {}
         all_statuses = set()
         for row in rows:
@@ -186,10 +224,11 @@ class StatsService:
             for row in rows
         ]
 
-    def _period_expr(self, granularity: str) -> str:
+    def _period_expr(self, granularity: str, table_alias: str | None = None) -> str:
         unit = DATE_TRUNC_UNITS[granularity]
         fmt = TO_CHAR_FORMATS[granularity]
-        return f"to_char(date_trunc('{unit}', time), '{fmt}')"
+        time_column = f"{table_alias}.time" if table_alias else "time"
+        return f"to_char(date_trunc('{unit}', {time_column}), '{fmt}')"
 
     def _parse_datetime(self, value: str) -> datetime:
         return datetime.fromisoformat(value)

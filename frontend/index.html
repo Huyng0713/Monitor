@@ -5,7 +5,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Nginx Monitor</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     #statusChartContainer {
 
@@ -94,6 +93,57 @@
       color: #0f172a;
       font-weight: bold;
     }
+
+    .field-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 150px;
+    }
+
+    .field-wrap.grow {
+      flex: 1;
+    }
+
+    .field-wrap.grow-large {
+      flex: 2;
+    }
+
+    .search-field {
+      width: 100%;
+      padding: 8px 12px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      color: #e2e8f0;
+    }
+
+    .icon-btn {
+      width: 34px;
+      height: 34px;
+      background: #334155;
+      border: none;
+      border-radius: 8px;
+      color: #e2e8f0;
+      cursor: pointer;
+      line-height: 1;
+      flex: 0 0 auto;
+    }
+
+    .toggle-btn {
+      padding: 6px 14px;
+      background: #334155;
+      border: none;
+      border-radius: 8px;
+      color: #e2e8f0;
+      cursor: pointer;
+    }
+
+    .toggle-btn.active {
+      background: #38bdf8;
+      color: #0f172a;
+      font-weight: bold;
+    }
   </style>
 </head>
 
@@ -119,24 +169,34 @@
   <div class="chart-card full-width" style="margin-bottom: 16px;">
     <h2>Search Logs</h2>
     <div style="display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
-      <input id="search-ip" type="text" placeholder="Search by IP..."
-        style="flex:1; padding:8px 12px; background:#0f172a; border:1px solid #334155; border-radius:8px; color:#e2e8f0; min-width:150px;">
-      <input id="search-url" type="text" placeholder="Search by URL..."
-        style="flex:2; padding:8px 12px; background:#0f172a; border:1px solid #334155; border-radius:8px; color:#e2e8f0; min-width:200px;">
-      <select id="search-status"
-        style="padding:8px 12px; background:#0f172a; border:1px solid #334155; border-radius:8px; color:#e2e8f0;">
-        <option value="">All Status Codes</option>
-        <option value="200">200</option>
-        <option value="301">301</option>
-        <option value="307">307</option>
-        <option value="400">400</option>
-        <option value="404">404</option>
-        <option value="500">500</option>
-      </select>
-      <input id="search-from" type="datetime-local"
-        style="padding:8px 12px; background:#0f172a; border:1px solid #334155; border-radius:8px; color:#e2e8f0;">
-      <input id="search-to" type="datetime-local"
-        style="padding:8px 12px; background:#0f172a; border:1px solid #334155; border-radius:8px; color:#e2e8f0;">
+      <div class="field-wrap grow">
+        <input id="search-ip" class="search-field" type="text" placeholder="Search by IP...">
+        <button class="icon-btn" onclick="clearSearchField('search-ip')" title="Clear IP search">x</button>
+      </div>
+      <div class="field-wrap grow-large" style="min-width:200px;">
+        <input id="search-url" class="search-field" type="text" placeholder="Search by URL...">
+        <button class="icon-btn" onclick="clearSearchField('search-url')" title="Clear URL search">x</button>
+      </div>
+      <div class="field-wrap">
+        <select id="search-status" class="search-field">
+          <option value="">All Status Codes</option>
+          <option value="200">200</option>
+          <option value="301">301</option>
+          <option value="307">307</option>
+          <option value="400">400</option>
+          <option value="404">404</option>
+          <option value="500">500</option>
+        </select>
+        <button class="icon-btn" onclick="clearSearchField('search-status')" title="Clear status search">x</button>
+      </div>
+      <div class="field-wrap">
+        <input id="search-from" class="search-field" type="datetime-local">
+        <button class="icon-btn" onclick="clearSearchField('search-from')" title="Clear from date">x</button>
+      </div>
+      <div class="field-wrap">
+        <input id="search-to" class="search-field" type="datetime-local">
+        <button class="icon-btn" onclick="clearSearchField('search-to')" title="Clear to date">x</button>
+      </div>
       <button onclick="runSearch()"
         style="padding:8px 20px; background:#38bdf8; border:none; border-radius:8px; color:#0f172a; font-weight:bold; cursor:pointer;">
         Search
@@ -210,9 +270,7 @@
           <input id="status-limit" type="number" value="60" min="10" max="1440"
             style="width:80px; padding:6px 10px; background:#0f172a; border:1px solid #334155; border-radius:8px; color:#e2e8f0;">
           <span style="color:#64748b; font-size:13px;">items</span>
-          <span style="color:#64748b; font-size:13px;">items</span>
-          <button id="scale-toggle" onclick="toggleScale()"
-            style="padding:6px 14px; background:#334155; border:none; border-radius:8px; color:#e2e8f0; cursor:pointer;">
+          <button id="scale-toggle" class="toggle-btn" onclick="toggleStatusScale()">
             Log Scale
           </button>
         </div>
@@ -227,7 +285,10 @@
 
     </div>
     <div class="chart-card">
-      <h2>Top IPs</h2>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:12px;">
+        <h2 style="margin-bottom:0;">Top IPs</h2>
+        <button id="ip-scale-toggle" class="toggle-btn" onclick="toggleIpScale()">Log Scale</button>
+      </div>
       <canvas id="ipChart"></canvas>
     </div>
     <div class="chart-card">
@@ -261,6 +322,7 @@
     "></div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
     const API = "";
 
@@ -268,7 +330,52 @@
 
     let trafficChart;
     let statusChart;
-    let useLogScale = false;
+    let ipChart;
+    let useStatusLogScale = false;
+    let useIpLogScale = false;
+    const LOG_TICKS = [1, 2, 4, 6, 8, 10, 20, 40, 60, 80, 100];
+
+    function formatPeriod(value) {
+      if (!value) return "";
+      const [datePart, timePart = ""] = String(value).split("T");
+      const [year, month, day] = datePart.split("-");
+      if (!year || !month || !day) return String(value).replace("T", " ");
+      return `${day}-${month}-${year}${timePart ? ` ${timePart}` : ""}`;
+    }
+
+    function formatDateTime(value) {
+      return formatPeriod(String(value || "").slice(0, 16));
+    }
+
+    function setToggleState(id, active) {
+      document.getElementById(id).classList.toggle("active", active);
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function logAxisOptions(maxValue) {
+      const maxTick = LOG_TICKS.find(tick => tick >= maxValue) || maxValue;
+      return {
+        type: "logarithmic",
+        min: 1,
+        suggestedMax: maxTick,
+        afterBuildTicks: axis => {
+          const max = axis.max || maxTick;
+          axis.ticks = LOG_TICKS.filter(tick => tick <= max).map(value => ({ value }));
+        },
+        ticks: {
+          color: "#64748b",
+          callback: value => Number.isInteger(Number(value)) ? value : null
+        }
+      };
+    }
 
     async function loadThresholdIPs() {
       const res = await fetch(`${API}/stats/anomalies`);
@@ -282,7 +389,7 @@
 
       const alerts = data.high_frequency.map(d => ({
         level: "red",
-        message: `🚨 IP <strong>${d.ip}</strong> sent <strong>${d.count}</strong> requests at ${d.minute.replace("T", " ")}`
+        message: `IP <strong>${escapeHtml(d.ip)}</strong> sent <strong>${escapeHtml(d.count)}</strong> requests at ${formatPeriod(d.minute)}`
       }));
 
       const pageSize = parseInt(document.getElementById("threshold-page-size").value) || 5;
@@ -324,9 +431,9 @@
     }
 
     async function loadTraffic(ip = "") {
-      const res = await fetch(`${API}/stats/traffic?granularity=hour&ip=${ip}`);
+      const res = await fetch(`${API}/stats/traffic?granularity=hour&limit=500&ip=${encodeURIComponent(ip)}`);
       const data = await res.json();
-      const labels = data.map(d => d.period.replace("T", " "));
+      const labels = data.map(d => formatPeriod(d.period));
       const counts = data.map(d => d.count);
 
       if (trafficChart) {
@@ -362,30 +469,28 @@
       });
     }
 
-    function toggleScale() {
-      useLogScale = !useLogScale;
-      document.getElementById("scale-toggle").style.background = useLogScale ? "#38bdf8" : "#334155";
-      document.getElementById("scale-toggle").style.color = useLogScale ? "#0f172a" : "#e2e8f0";
+    function toggleStatusScale() {
+      useStatusLogScale = !useStatusLogScale;
+      setToggleState("scale-toggle", useStatusLogScale);
       loadStatusCodes(document.querySelector(".range-btn.active").dataset.range);
     }
 
     async function loadStatusCodes(range = "hour") {
       const thresholds = { minute: 10, hour: 100, day: 1200 };
-      const res = await fetch(`${API}/stats/status-codes-over-time?granularity=${range}`);
+      const limit = parseInt(document.getElementById("status-limit").value) || 60;
+      const res = await fetch(`${API}/stats/status-codes-over-time?granularity=${range}&limit=${limit}`);
       const data = await res.json();
 
-      const limit = parseInt(document.getElementById("status-limit").value) || 60;
-      if (data.labels.length > limit) {
-        data.labels = data.labels.slice(-limit);
-        data.datasets = data.datasets.map(d => ({ ...d, data: d.data.slice(-limit) }));
-      }
-
       const colors = ["#38bdf8","#22c55e","#fbbf24","#f87171","#c084fc","#14b8a6","#f97316","#e11d48"];
-      const labels = data.labels.map(l => l.replace("T", " "));
+      const labels = data.labels.map(l => formatPeriod(l));
+      const maxCount = Math.max(
+        thresholds[range],
+        ...data.datasets.flatMap(dataset => dataset.data)
+      );
 
       const datasets = data.datasets.map((dataset, index) => ({
         label: dataset.label,
-        data: dataset.data.map(v => (!v || v < 1) ? (useLogScale ? 0.1 : 0) : v),
+        data: dataset.data.map(v => useStatusLogScale && (!v || v < 1) ? null : v),
         borderColor: colors[index % colors.length],
         tension: 0.4,
         pointRadius: 0,
@@ -443,34 +548,43 @@
           },
           scales: {
             x: { ticks: { color: "#64748b", maxRotation: 45, minRotation: 45, autoSkip: false } },
-            y: {
-              type: useLogScale ? "logarithmic" : "linear",
-              min: useLogScale ? 0.09 : 0,
-              ticks: {
-                color: "#64748b",
-                callback: value => (useLogScale && value < 1) ? null : value
-              }
-            }
+            y: useStatusLogScale
+              ? logAxisOptions(maxCount)
+              : { beginAtZero: true, ticks: { color: "#64748b" } }
           }
         }
       });
     }
 
+    function toggleIpScale() {
+      useIpLogScale = !useIpLogScale;
+      setToggleState("ip-scale-toggle", useIpLogScale);
+      loadTopIPs();
+    }
+
     async function loadTopIPs() {
       const res = await fetch(`${API}/stats/top-ips?limit=10`);
       const data = await res.json();
-      new Chart(document.getElementById("ipChart"), {
+      const counts = data.map(d => d.count);
+
+      if (ipChart) {
+        ipChart.destroy();
+      }
+
+      ipChart = new Chart(document.getElementById("ipChart"), {
         type: "bar",
         data: {
           labels: data.map(d => d.ip),
-          datasets: [{ label: "Requests", data: data.map(d => d.count), backgroundColor: "#38bdf8" }]
+          datasets: [{ label: "Requests", data: counts, backgroundColor: "#38bdf8" }]
         },
         options: {
           animation: false,
           indexAxis: "y",
           plugins: { legend: { labels: { color: "#e2e8f0" } } },
           scales: {
-            x: { beginAtZero: true, ticks: { color: "#64748b" } },
+            x: useIpLogScale
+              ? logAxisOptions(Math.max(...counts, 1))
+              : { beginAtZero: true, ticks: { color: "#64748b" } },
             y: { ticks: { color: "#64748b" } }
           }
         }
@@ -490,25 +604,25 @@
     }
 
     async function loadAnomalies() {
+      const container = document.getElementById("anomaly-list");
+      if (!container) return;
+
       const res = await fetch(`${API}/stats/anomalies`);
       const data = await res.json();
       const alerts = [];
 
       data.high_frequency.forEach(d => alerts.push({
         level: "red",
-        message: `🚨 IP <strong>${d.ip}</strong> sent <strong>${d.count}</strong> requests in 1 minute at ${d.minute.replace("T", " ")}`
+        message: `IP <strong>${escapeHtml(d.ip)}</strong> sent <strong>${escapeHtml(d.count)}</strong> requests in 1 minute at ${formatPeriod(d.minute)}`
       }));
       data.many_404s.forEach(d => alerts.push({
         level: "yellow",
-        message: `⚠ IP <strong>${d.ip}</strong> triggered <strong>${d.count}</strong> 404 errors`
+        message: `IP <strong>${escapeHtml(d.ip)}</strong> triggered <strong>${escapeHtml(d.count)}</strong> 404 errors`
       }));
       data.many_500s.forEach(d => alerts.push({
         level: "red",
-        message: `🔥 IP <strong>${d.ip}</strong> caused <strong>${d.count}</strong> server errors (500)`
+        message: `IP <strong>${escapeHtml(d.ip)}</strong> caused <strong>${escapeHtml(d.count)}</strong> server errors (500)`
       }));
-
-      const container = document.getElementById("anomaly-list");
-      if (!container) return;
 
       if (alerts.length === 0) {
         container.innerHTML = `<p style="color:#34d399;">✓ No anomalies detected</p>`;
@@ -555,8 +669,8 @@
       if (ip) url += `ip=${encodeURIComponent(ip)}&`;
       if (path) url += `path=${encodeURIComponent(path)}&`;
       if (status) url += `status=${status}&`;
-      if (from) url += `time_from=${encodeURIComponent(from.replace("T", " "))}&`;
-      if (to) url += `time_to=${encodeURIComponent(to.replace("T", " "))}&`;
+      if (from) url += `time_from=${encodeURIComponent(from)}&`;
+      if (to) url += `time_to=${encodeURIComponent(to)}&`;
 
       const res = await fetch(url);
       const data = await res.json();
@@ -564,15 +678,19 @@
 
       document.getElementById("search-results").innerHTML = data.map(r => `
         <tr style="border-bottom:1px solid #1e293b;">
-          <td style="padding:8px;color:#38bdf8;">${r.ip}</td>
-          <td style="padding:8px;color:#64748b;">${r.time.replace("T", " ")}</td>
-          <td style="padding:8px;color:#94a3b8;">${r.method}</td>
-          <td style="padding:8px;color:#e2e8f0;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.path}</td>
-          <td style="padding:8px;color:${statusColor(r.status)};">${r.status}</td>
-          <td style="padding:8px;color:#64748b;">${r.size}</td>
+          <td style="padding:8px;color:#38bdf8;">${escapeHtml(r.ip)}</td>
+          <td style="padding:8px;color:#64748b;">${formatDateTime(r.time)}</td>
+          <td style="padding:8px;color:#94a3b8;">${escapeHtml(r.method)}</td>
+          <td style="padding:8px;color:#e2e8f0;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.path)}</td>
+          <td style="padding:8px;color:${statusColor(r.status)};">${escapeHtml(r.status)}</td>
+          <td style="padding:8px;color:#64748b;">${escapeHtml(r.size)}</td>
         </tr>
       `).join("");
       document.getElementById("search-count").textContent = `Showing ${data.length} results`;
+    }
+
+    function clearSearchField(id) {
+      document.getElementById(id).value = "";
     }
 
     function clearSearch() {
@@ -590,10 +708,11 @@
       const data = await res.json();
       const container = document.getElementById("system-logs");
       const colorLine = line => {
-        if (line.includes("[ERROR]")) return `<span style="color:#f87171;">${line}</span>`;
-        if (line.includes("[WARNING]")) return `<span style="color:#fbbf24;">${line}</span>`;
-        if (line.includes("[INFO]")) return `<span style="color:#34d399;">${line}</span>`;
-        return `<span style="color:#64748b;">${line}</span>`;
+        const safeLine = escapeHtml(line);
+        if (line.includes("[ERROR]")) return `<span style="color:#f87171;">${safeLine}</span>`;
+        if (line.includes("[WARNING]")) return `<span style="color:#fbbf24;">${safeLine}</span>`;
+        if (line.includes("[INFO]")) return `<span style="color:#34d399;">${safeLine}</span>`;
+        return `<span style="color:#64748b;">${safeLine}</span>`;
       };
       container.innerHTML = data.lines.map(l => colorLine(l.trimEnd())).join("<br>");
       container.scrollTop = container.scrollHeight;
@@ -620,16 +739,15 @@
       loadThresholdIPs();
     });
 
-    loadSummary();
-    loadErrorBreakdown();
-    loadTopIPs();
-    setTimeout(() => {
-      loadTraffic();
-      loadStatusCodes("hour");
-      loadAnomalies();
-      loadThresholdIPs();
-      loadSystemLogs();
-    }, 100);
+    Promise.all([
+      loadSummary(),
+      loadErrorBreakdown(),
+      loadTopIPs(),
+      loadTraffic(),
+      loadStatusCodes("hour"),
+      loadThresholdIPs(),
+      loadSystemLogs(),
+    ]);
   </script>
 
 </body>
