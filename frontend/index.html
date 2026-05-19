@@ -333,7 +333,7 @@
     let ipChart;
     let useStatusLogScale = false;
     let useIpLogScale = false;
-    const LOG_TICKS = [1, 2, 4, 6, 8, 10, 20, 40, 60, 80, 100];
+    const LOG_TICK_STEPS = [1, 2, 4, 6, 8];
 
     function formatPeriod(value) {
       if (!value) return "";
@@ -360,19 +360,50 @@
         .replace(/'/g, "&#39;");
     }
 
-    function logAxisOptions(maxValue) {
-      const maxTick = LOG_TICKS.find(tick => tick >= maxValue) || maxValue;
+    function buildCompressedTicks(maxValue) {
+      const target = Math.max(1, Number(maxValue) || 1);
+      const ticks = [];
+      let multiplier = 1;
+
+      while (ticks.length === 0 || ticks[ticks.length - 1] < target) {
+        LOG_TICK_STEPS.forEach(step => ticks.push(step * multiplier));
+        multiplier *= 10;
+      }
+
+      return ticks;
+    }
+
+    function compressedValue(value, ticks) {
+      const numericValue = Number(value);
+      if (!numericValue || numericValue < 1) return null;
+
+      const exactIndex = ticks.indexOf(numericValue);
+      if (exactIndex !== -1) return exactIndex;
+
+      for (let i = 1; i < ticks.length; i += 1) {
+        if (numericValue < ticks[i]) {
+          const start = ticks[i - 1];
+          const end = ticks[i];
+          return (i - 1) + ((numericValue - start) / (end - start));
+        }
+      }
+
+      return ticks.length - 1;
+    }
+
+    function compressedData(values, ticks) {
+      return values.map(value => compressedValue(value, ticks));
+    }
+
+    function compressedAxisOptions(ticks) {
       return {
-        type: "logarithmic",
-        min: 1,
-        suggestedMax: maxTick,
-        afterBuildTicks: axis => {
-          const max = axis.max || maxTick;
-          axis.ticks = LOG_TICKS.filter(tick => tick <= max).map(value => ({ value }));
-        },
+        type: "linear",
+        min: 0,
+        max: ticks.length - 1,
         ticks: {
           color: "#64748b",
-          callback: value => Number.isInteger(Number(value)) ? value : null
+          stepSize: 1,
+          callback: value => Number.isInteger(Number(value)) ? ticks[value].toLocaleString() : null
         }
       };
     }
@@ -488,21 +519,29 @@
         ...data.datasets.flatMap(dataset => dataset.data)
       );
 
-      const datasets = data.datasets.map((dataset, index) => ({
-        label: dataset.label,
-        data: dataset.data.map(v => useStatusLogScale && (!v || v < 1) ? null : v),
-        borderColor: colors[index % colors.length],
-        tension: 0.4,
-        pointRadius: 0,
-        pointHoverRadius: 8,
-        hitRadius: 10,
-        borderWidth: 2,
-        spanGaps: true,
-      }));
+      const compressedTicks = buildCompressedTicks(maxCount);
+      const datasets = data.datasets.map((dataset, index) => {
+        const originalData = dataset.data.map(value => Number(value) || 0);
+        return {
+          label: dataset.label,
+          originalData,
+          data: useStatusLogScale ? compressedData(originalData, compressedTicks) : originalData,
+          borderColor: colors[index % colors.length],
+          tension: 0.4,
+          pointRadius: 0,
+          pointHoverRadius: 8,
+          hitRadius: 10,
+          borderWidth: 2,
+          spanGaps: true,
+        };
+      });
 
       datasets.push({
         label: `Threshold (${thresholds[range]})`,
-        data: new Array(labels.length).fill(thresholds[range]),
+        originalData: new Array(labels.length).fill(thresholds[range]),
+        data: new Array(labels.length).fill(
+          useStatusLogScale ? compressedValue(thresholds[range], compressedTicks) : thresholds[range]
+        ),
         borderColor: "#ff4d4f",
         borderDash: [8, 8],
         borderWidth: 2,
@@ -543,13 +582,18 @@
               borderColor: "#334155",
               borderWidth: 1,
               padding: 10,
-              callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y}` }
+              callbacks: {
+                label: ctx => {
+                  const originalValue = ctx.dataset.originalData?.[ctx.dataIndex] ?? ctx.parsed.y;
+                  return ` ${ctx.dataset.label}: ${originalValue}`;
+                }
+              }
             }
           },
           scales: {
             x: { ticks: { color: "#64748b", maxRotation: 45, minRotation: 45, autoSkip: false } },
             y: useStatusLogScale
-              ? logAxisOptions(maxCount)
+              ? compressedAxisOptions(compressedTicks)
               : { beginAtZero: true, ticks: { color: "#64748b" } }
           }
         }
@@ -575,15 +619,30 @@
         type: "bar",
         data: {
           labels: data.map(d => d.ip),
-          datasets: [{ label: "Requests", data: counts, backgroundColor: "#38bdf8" }]
+          datasets: [{
+            label: "Requests",
+            originalData: counts,
+            data: useIpLogScale ? compressedData(counts, buildCompressedTicks(Math.max(...counts, 1))) : counts,
+            backgroundColor: "#38bdf8"
+          }]
         },
         options: {
           animation: false,
           indexAxis: "y",
-          plugins: { legend: { labels: { color: "#e2e8f0" } } },
+          plugins: {
+            legend: { labels: { color: "#e2e8f0" } },
+            tooltip: {
+              callbacks: {
+                label: ctx => {
+                  const originalValue = ctx.dataset.originalData?.[ctx.dataIndex] ?? ctx.parsed.x;
+                  return ` ${ctx.dataset.label}: ${originalValue}`;
+                }
+              }
+            }
+          },
           scales: {
             x: useIpLogScale
-              ? logAxisOptions(Math.max(...counts, 1))
+              ? compressedAxisOptions(buildCompressedTicks(Math.max(...counts, 1)))
               : { beginAtZero: true, ticks: { color: "#64748b" } },
             y: { ticks: { color: "#64748b" } }
           }
