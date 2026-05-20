@@ -1,8 +1,8 @@
 import argparse
 
-from db import init_db, insert_many
+from db import BULK_INSERT_BATCH_SIZE, init_db, insert_many
 from log import log_activity, log_exception
-from log_sources import FileLogSource, collect_entries
+from log_sources import FileLogSource, iter_entry_batches
 
 
 def parse_args():
@@ -29,26 +29,29 @@ def main():
         log_activity("Database initialized")
 
         source = FileLogSource(name=args.source_name, filepath=args.filepath)
-        entries = collect_entries(source)
+        parsed = 0
+        inserted = 0
+        for batch in iter_entry_batches(source.read_entries(), BULK_INSERT_BATCH_SIZE):
+            parsed += len(batch)
+            inserted += insert_many(batch)
+        skipped = parsed - inserted if inserted <= parsed else 0
         log_activity(
-            "Parsed %s entries from log source=%s path=%s",
-            len(entries),
+            "Imported log entries from source=%s path=%s parsed=%s inserted=%s skipped=%s",
             source.name,
             source.filepath,
-        )
-
-        inserted = insert_many(entries)
-        skipped = len(entries) - inserted if inserted <= len(entries) else 0
-        log_activity(
-            "Inserted %s entries into DB from source=%s skipped=%s",
+            parsed,
             inserted,
-            source.name,
             skipped,
+        )
+        log_activity(
+            "Streaming import completed: source=%s batch_size=%s",
+            source.name,
+            BULK_INSERT_BATCH_SIZE,
         )
 
         print(f"Source: {source.name}")
         print(f"File: {source.filepath}")
-        print(f"Parsed entries: {len(entries)}")
+        print(f"Parsed entries: {parsed}")
         print(f"Inserted entries: {inserted}")
         print(f"Skipped entries: {skipped}")
     except Exception:

@@ -113,22 +113,33 @@ def insert_entry(entry: LogEntry):
 
 
 def insert_many(entries):
-    rows = [_entry_to_row(entry) for entry in entries]
-    if not rows:
+    batch = []
+    inserted_total = 0
+    received_total = 0
+
+    def flush_batch(rows):
+        if not rows:
+            return 0
+        with write_connection() as session:
+            statement = pg_insert(LogRecord).values(rows)
+            statement = statement.on_conflict_do_nothing(constraint="uq_logs_identity")
+            result = session.execute(statement)
+        return result.rowcount if result.rowcount is not None and result.rowcount >= 0 else 0
+
+    for entry in entries:
+        batch.append(_entry_to_row(entry))
+        received_total += 1
+        if len(batch) >= BULK_INSERT_BATCH_SIZE:
+            inserted_total += flush_batch(batch)
+            batch = []
+
+    inserted_total += flush_batch(batch)
+
+    if received_total == 0:
         log_activity("insert_many called with no entries")
         return 0
 
-    inserted_total = 0
-    for start in range(0, len(rows), BULK_INSERT_BATCH_SIZE):
-        batch = rows[start:start + BULK_INSERT_BATCH_SIZE]
-        with write_connection() as session:
-            statement = pg_insert(LogRecord).values(batch)
-            statement = statement.on_conflict_do_nothing(constraint="uq_logs_identity")
-            result = session.execute(statement)
-        inserted = result.rowcount if result.rowcount is not None and result.rowcount >= 0 else 0
-        inserted_total += inserted
-
-    log_activity("Bulk insert completed: received=%s inserted=%s", len(rows), inserted_total)
+    log_activity("Bulk insert completed: received=%s inserted=%s", received_total, inserted_total)
     return inserted_total
 
 
