@@ -412,7 +412,7 @@
 
     function buildCompressedTicks(maxValue) {
       const target = Math.max(1, Number(maxValue) || 1);
-      const ticks = [];
+      const ticks = [0];
       let multiplier = 1;
 
       while (ticks.length === 0 || ticks[ticks.length - 1] < target) {
@@ -425,7 +425,7 @@
 
     function compressedValue(value, ticks) {
       const numericValue = Number(value);
-      if (!numericValue || numericValue < 1) return null;
+      if (!numericValue || numericValue < 1) return 0;
 
       const exactIndex = ticks.indexOf(numericValue);
       if (exactIndex !== -1) return exactIndex;
@@ -450,10 +450,13 @@
         type: "linear",
         min: 0,
         max: ticks.length - 1,
+        afterBuildTicks: axis => {
+          axis.ticks = ticks.map((_, index) => ({ value: index }));
+        },
         ticks: {
           color: "#64748b",
           stepSize: 1,
-          callback: value => Number.isInteger(Number(value)) ? ticks[value].toLocaleString() : null
+          callback: value => Number.isInteger(Number(value)) ? ticks[value].toLocaleString() : ""
         }
       };
     }
