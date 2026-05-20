@@ -140,9 +140,10 @@ def search_logs(
     time_from: str = None,
     time_to: str = None,
     limit: int = Query(default=100, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
 ):
     # search is not cached
-    return stats_service.search_logs(ip, path, status, time_from, time_to, limit)
+    return stats_service.search_logs(ip, path, status, time_from, time_to, limit, offset)
 
 
 @app.get("/stats/status-codes-over-time")

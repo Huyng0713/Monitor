@@ -197,6 +197,10 @@
         <input id="search-to" class="search-field" type="datetime-local">
         <button class="icon-btn" onclick="clearSearchField('search-to')" title="Clear to date">x</button>
       </div>
+      <div class="field-wrap" style="min-width:120px;">
+        <input id="search-page-size" class="search-field" type="number" value="25" min="1" max="1000" title="Results per page">
+        <span style="color:#64748b; font-size:13px;">per page</span>
+      </div>
       <button onclick="runSearch()"
         style="padding:8px 20px; background:#38bdf8; border:none; border-radius:8px; color:#0f172a; font-weight:bold; cursor:pointer;">
         Search
@@ -220,6 +224,7 @@
       <tbody id="search-results"></tbody>
     </table>
     <p id="search-count" style="margin-top:8px; color:#64748b; font-size:12px;"></p>
+    <div id="search-pagination" style="display:flex; align-items:center; gap:12px; margin-top:12px;"></div>
   </div>
 
   <div class="chart-card full-width" style="margin-bottom: 16px;">
@@ -243,14 +248,17 @@
 
         <h2>Traffic Over Time</h2>
 
-        <input id="traffic-ip-search" type="text" placeholder="Search IP traffic..." style="
-        padding:8px 12px;
-        background:#0f172a;
-        border:1px solid #334155;
-        border-radius:8px;
-        color:#e2e8f0;
-        min-width:220px;
-      " />
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <input id="traffic-ip-search" type="text" placeholder="Search IP traffic..." style="
+          padding:8px 12px;
+          background:#0f172a;
+          border:1px solid #334155;
+          border-radius:8px;
+          color:#e2e8f0;
+          min-width:220px;
+        " />
+          <button id="traffic-scale-toggle" class="toggle-btn" onclick="toggleTrafficScale()">Log Scale</button>
+        </div>
 
       </div>
       <canvas id="trafficChart"></canvas>
@@ -269,7 +277,7 @@
           <button class="range-btn" data-range="day">Days</button>
           <input id="status-limit" type="number" value="60" min="10" max="1440"
             style="width:80px; padding:6px 10px; background:#0f172a; border:1px solid #334155; border-radius:8px; color:#e2e8f0;">
-          <span style="color:#64748b; font-size:13px;">items</span>
+          <span id="status-limit-unit" style="color:#64748b; font-size:13px;">hours</span>
           <button id="scale-toggle" class="toggle-btn" onclick="toggleStatusScale()">
             Log Scale
           </button>
@@ -331,6 +339,7 @@
     let trafficChart;
     let statusChart;
     let ipChart;
+    let useTrafficLogScale = false;
     let useStatusLogScale = false;
     let useIpLogScale = false;
     const LOG_TICK_STEPS = [1, 2, 4, 6, 8];
@@ -465,11 +474,17 @@
       const res = await fetch(`${API}/stats/traffic?granularity=hour&limit=500&ip=${encodeURIComponent(ip)}`);
       const data = await res.json();
       const labels = data.map(d => formatPeriod(d.period));
-      const counts = data.map(d => d.count);
+      const counts = data.map(d => Number(d.count) || 0);
+      const compressedTicks = buildCompressedTicks(Math.max(...counts, 1));
+      const chartData = useTrafficLogScale ? compressedData(counts, compressedTicks) : counts;
 
       if (trafficChart) {
         trafficChart.data.labels = labels;
-        trafficChart.data.datasets[0].data = counts;
+        trafficChart.data.datasets[0].originalData = counts;
+        trafficChart.data.datasets[0].data = chartData;
+        trafficChart.options.scales.y = useTrafficLogScale
+          ? compressedAxisOptions(compressedTicks)
+          : { beginAtZero: true, ticks: { color: "#64748b" } };
         trafficChart.update("none");
         return;
       }
@@ -480,24 +495,48 @@
           labels,
           datasets: [{
             label: "Requests",
-            data: counts,
+            originalData: counts,
+            data: chartData,
             borderColor: "#38bdf8",
             backgroundColor: "rgba(56,189,248,0.1)",
             fill: true,
             tension: 0.4,
             pointRadius: 0,
+            pointHoverRadius: 5,
+            hitRadius: 12,
             borderWidth: 2,
           }]
         },
         options: {
           animation: false,
-          plugins: { legend: { labels: { color: "#e2e8f0" } } },
+          interaction: { mode: "index", intersect: false, axis: "x" },
+          plugins: {
+            legend: { labels: { color: "#e2e8f0" } },
+            tooltip: {
+              intersect: false,
+              mode: "index",
+              callbacks: {
+                label: ctx => {
+                  const originalValue = ctx.dataset.originalData?.[ctx.dataIndex] ?? ctx.parsed.y;
+                  return ` ${ctx.dataset.label}: ${originalValue}`;
+                }
+              }
+            }
+          },
           scales: {
             x: { ticks: { color: "#64748b", maxTicksLimit: 12 } },
-            y: { beginAtZero: true, ticks: { color: "#64748b" } }
+            y: useTrafficLogScale
+              ? compressedAxisOptions(compressedTicks)
+              : { beginAtZero: true, ticks: { color: "#64748b" } }
           }
         }
       });
+    }
+
+    function toggleTrafficScale() {
+      useTrafficLogScale = !useTrafficLogScale;
+      setToggleState("traffic-scale-toggle", useTrafficLogScale);
+      loadTraffic(document.getElementById("traffic-ip-search").value.trim());
     }
 
     function toggleStatusScale() {
@@ -506,7 +545,13 @@
       loadStatusCodes(document.querySelector(".range-btn.active").dataset.range);
     }
 
+    function updateStatusLimitUnit(range) {
+      const units = { minute: "minutes", hour: "hours", day: "days" };
+      document.getElementById("status-limit-unit").textContent = units[range] || "items";
+    }
+
     async function loadStatusCodes(range = "hour") {
+      updateStatusLimitUnit(range);
       const thresholds = { minute: 10, hour: 100, day: 1200 };
       const limit = parseInt(document.getElementById("status-limit").value) || 60;
       const res = await fetch(`${API}/stats/status-codes-over-time?granularity=${range}&limit=${limit}`);
@@ -717,22 +762,37 @@
       renderPage(currentPage);
     }
 
-    async function runSearch() {
-      const ip = document.getElementById("search-ip").value;
-      const path = document.getElementById("search-url").value;
+    async function runSearch(page = 0) {
+      const ip = document.getElementById("search-ip").value.trim();
+      const path = document.getElementById("search-url").value.trim();
       const status = document.getElementById("search-status").value;
       const from = document.getElementById("search-from").value;
       const to = document.getElementById("search-to").value;
+      const pageSize = Math.min(Math.max(parseInt(document.getElementById("search-page-size").value) || 25, 1), 1000);
+      const hasSearchCriteria = Boolean(ip || path || status || from || to);
 
-      let url = `${API}/stats/search?`;
-      if (ip) url += `ip=${encodeURIComponent(ip)}&`;
-      if (path) url += `path=${encodeURIComponent(path)}&`;
-      if (status) url += `status=${status}&`;
-      if (from) url += `time_from=${encodeURIComponent(from)}&`;
-      if (to) url += `time_to=${encodeURIComponent(to)}&`;
+      if (!hasSearchCriteria) {
+        document.getElementById("search-results").innerHTML = "";
+        document.getElementById("search-count").textContent = "Enter at least one search filter.";
+        document.getElementById("search-pagination").innerHTML = "";
+        return;
+      }
 
-      const res = await fetch(url);
-      const data = await res.json();
+      const params = new URLSearchParams({
+        limit: String(pageSize),
+        offset: String(page * pageSize),
+      });
+      if (ip) params.set("ip", ip);
+      if (path) params.set("path", path);
+      if (status) params.set("status", status);
+      if (from) params.set("time_from", from);
+      if (to) params.set("time_to", to);
+
+      const res = await fetch(`${API}/stats/search?${params.toString()}`);
+      const payload = await res.json();
+      const data = payload.rows || [];
+      const total = payload.total || 0;
+      const totalPages = Math.max(Math.ceil(total / pageSize), 1);
       const statusColor = s => s >= 500 ? "#f87171" : s >= 400 ? "#fbbf24" : "#34d399";
 
       document.getElementById("search-results").innerHTML = data.map(r => `
@@ -745,7 +805,18 @@
           <td style="padding:8px;color:#64748b;">${escapeHtml(r.size)}</td>
         </tr>
       `).join("");
-      document.getElementById("search-count").textContent = `Showing ${data.length} results`;
+      const start = total === 0 ? 0 : (page * pageSize) + 1;
+      const end = Math.min((page + 1) * pageSize, total);
+      document.getElementById("search-count").textContent = total === 0
+        ? "No matching logs found."
+        : `Showing ${start}-${end} of ${total} results`;
+      document.getElementById("search-pagination").innerHTML = totalPages <= 1 ? "" : `
+        <button onclick="runSearch(${page - 1})" ${page === 0 ? "disabled" : ""}
+          style="padding:6px 14px;background:#334155;border:none;border-radius:8px;color:#e2e8f0;cursor:pointer;opacity:${page === 0 ? 0.4 : 1};">Prev</button>
+        <span style="color:#64748b;font-size:13px;">Page ${page + 1} of ${totalPages}</span>
+        <button onclick="runSearch(${page + 1})" ${page >= totalPages - 1 ? "disabled" : ""}
+          style="padding:6px 14px;background:#334155;border:none;border-radius:8px;color:#e2e8f0;cursor:pointer;opacity:${page >= totalPages - 1 ? 0.4 : 1};">Next</button>
+      `;
     }
 
     function clearSearchField(id) {
@@ -760,6 +831,7 @@
       document.getElementById("search-to").value = "";
       document.getElementById("search-results").innerHTML = "";
       document.getElementById("search-count").textContent = "";
+      document.getElementById("search-pagination").innerHTML = "";
     }
 
     async function loadSystemLogs() {
@@ -792,6 +864,10 @@
 
     document.getElementById("status-limit").addEventListener("change", () => {
       loadStatusCodes(document.querySelector(".range-btn.active").dataset.range);
+    });
+
+    document.getElementById("search-page-size").addEventListener("change", () => {
+      runSearch();
     });
 
     document.getElementById("threshold-page-size").addEventListener("change", () => {

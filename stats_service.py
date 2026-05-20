@@ -189,30 +189,41 @@ class StatsService:
         ]
         return {"labels": labels, "datasets": datasets}
 
-    def search_logs(self, ip, path, status, time_from, time_to, limit):
+    def search_logs(self, ip, path, status, time_from, time_to, limit, offset=0):
         # search is not cached since it has many parameter combinations
-        query = "SELECT ip, time, method, path, status, size FROM logs WHERE 1=1"
-        params: dict[str, object] = {"limit": limit}
+        if not any([ip, path, status is not None, time_from, time_to]):
+            return {"rows": [], "total": 0}
 
+        where_clauses = []
+        params: dict[str, object] = {"limit": limit, "offset": offset}
         if ip:
-            query += " AND ip LIKE :ip"
+            where_clauses.append("ip LIKE :ip")
             params["ip"] = f"%{ip}%"
         if path:
-            query += " AND path LIKE :path"
+            where_clauses.append("path LIKE :path")
             params["path"] = f"%{path}%"
         if status is not None:
-            query += " AND status = :status"
+            where_clauses.append("status = :status")
             params["status"] = status
         if time_from:
-            query += " AND time >= :time_from"
+            where_clauses.append("time >= :time_from")
             params["time_from"] = self._parse_datetime(time_from)
         if time_to:
-            query += " AND time <= :time_to"
+            where_clauses.append("time <= :time_to")
             params["time_to"] = self._parse_datetime(time_to)
 
-        query += " ORDER BY time DESC LIMIT :limit"
+        where_sql = " AND ".join(where_clauses)
+        total = self.fetch_scalar(f"SELECT COUNT(*) FROM logs WHERE {where_sql}", params)
+        query = f"""
+            SELECT ip, time, method, path, status, size
+            FROM logs
+            WHERE {where_sql}
+            ORDER BY time DESC
+            LIMIT :limit OFFSET :offset
+        """
         rows = self.fetch_rows(query, params)
-        return [
+        return {
+            "rows": [
             {
                 "ip": row["ip"],
                 "time": row["time"].isoformat() if hasattr(row["time"], "isoformat") else row["time"],
@@ -222,7 +233,9 @@ class StatsService:
                 "size": row["size"],
             }
             for row in rows
-        ]
+            ],
+            "total": total,
+        }
 
     def _period_expr(self, granularity: str, table_alias: str | None = None) -> str:
         unit = DATE_TRUNC_UNITS[granularity]
