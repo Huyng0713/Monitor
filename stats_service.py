@@ -10,6 +10,11 @@ DATE_TRUNC_UNITS = {
     "hour": "hour",
     "day": "day",
 }
+INTERVAL_UNITS = {
+    "minute": "1 minute",
+    "hour": "1 hour",
+    "day": "1 day",
+}
 TO_CHAR_FORMATS = {
     "minute": "YYYY-MM-DD\"T\"HH24:MI",
     "hour": "YYYY-MM-DD\"T\"HH24",
@@ -154,33 +159,50 @@ class StatsService:
         )
 
     def _fetch_status_codes_over_time(self, granularity: str, limit: int):
-        period_expr = self._period_expr(granularity, "l")
+        unit = DATE_TRUNC_UNITS[granularity]
+        interval = INTERVAL_UNITS[granularity]
+        fmt = TO_CHAR_FORMATS[granularity]
         rows = self.fetch_rows(f"""
-            WITH recent_periods AS (
-                SELECT period FROM (
-                    SELECT DISTINCT {period_expr} AS period
-                    FROM logs l
-                    ORDER BY period DESC
-                    LIMIT :limit
-                ) recent
-                ORDER BY period
+            WITH bounds AS (
+                SELECT date_trunc('{unit}', COALESCE(MAX(time), NOW())) AS end_period
+                FROM logs
+            ),
+            periods AS (
+                SELECT generate_series(
+                    end_period - ((:limit - 1) * INTERVAL '{interval}'),
+                    end_period,
+                    INTERVAL '{interval}'
+                ) AS period
+                FROM bounds
+            ),
+            counts AS (
+                SELECT
+                    date_trunc('{unit}', l.time) AS period,
+                    l.status,
+                    COUNT(*) AS count
+                FROM logs l
+                CROSS JOIN bounds
+                WHERE l.time >= bounds.end_period - ((:limit - 1) * INTERVAL '{interval}')
+                  AND l.time < bounds.end_period + INTERVAL '{interval}'
+                GROUP BY period, l.status
             )
             SELECT
-                recent_periods.period AS period,
-                l.status,
-                COUNT(*) AS count
-            FROM logs l
-            JOIN recent_periods ON {period_expr} = recent_periods.period
-            GROUP BY recent_periods.period, l.status
-            ORDER BY recent_periods.period
+                to_char(periods.period, '{fmt}') AS period,
+                counts.status,
+                COALESCE(counts.count, 0) AS count
+            FROM periods
+            LEFT JOIN counts ON counts.period = periods.period
+            ORDER BY periods.period, counts.status
         """, {"limit": limit})
         grouped = {}
         all_statuses = set()
         for row in rows:
             period = row["period"]
-            status = str(row["status"])
-            all_statuses.add(status)
-            grouped.setdefault(period, {})[status] = row["count"]
+            grouped.setdefault(period, {})
+            if row["status"] is not None:
+                status = str(row["status"])
+                all_statuses.add(status)
+                grouped[period][status] = row["count"]
 
         labels = sorted(grouped.keys())
         datasets = [

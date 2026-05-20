@@ -598,7 +598,7 @@
     async function loadStatusCodes(range = "hour") {
       updateStatusLimitUnit(range);
       const thresholds = { minute: 10, hour: 100, day: 1200 };
-      const limit = parseInt(document.getElementById("status-limit").value) || 60;
+      const limit = numberInputValue("status-limit", 60, 1, 1440);
       const res = await fetch(`${API}/stats/status-codes-over-time?granularity=${range}&limit=${limit}`);
       const data = await res.json();
 
