@@ -330,6 +330,7 @@
     "></div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
     const API = "";
@@ -346,14 +347,18 @@
 
     function formatPeriod(value) {
       if (!value) return "";
-      const [datePart, timePart = ""] = String(value).split("T");
-      const [year, month, day] = datePart.split("-");
-      if (!year || !month || !day) return String(value).replace("T", " ");
-      return `${day}-${month}-${year}${timePart ? ` ${timePart}` : ""}`;
+      const rawValue = String(value);
+      const parseValue = /^\d{4}-\d{2}-\d{2}T\d{2}$/.test(rawValue) ? `${rawValue}:00` : rawValue;
+      const parsed = dayjs(parseValue);
+      if (!parsed.isValid()) return rawValue.replace("T", " ");
+      if (/^\d{4}-\d{2}-\d{2}$/.test(rawValue)) return parsed.format("DD-MM-YYYY");
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}$/.test(rawValue)) return parsed.format("DD-MM-YYYY HH");
+      return parsed.format("DD-MM-YYYY HH:mm");
     }
 
     function formatDateTime(value) {
-      return formatPeriod(String(value || "").slice(0, 16));
+      const parsed = dayjs(value);
+      return parsed.isValid() ? parsed.format("DD-MM-YYYY HH:mm") : formatPeriod(String(value || "").slice(0, 16));
     }
 
     function setToggleState(id, active) {
@@ -368,6 +373,42 @@
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#39;");
     }
+
+    function numberInputValue(id, fallback, min, max) {
+      const input = document.getElementById(id);
+      let value = parseInt(input.value, 10);
+      if (Number.isNaN(value)) value = fallback;
+      value = Math.min(Math.max(value, min), max);
+      input.value = String(value);
+      return value;
+    }
+
+    function searchDateParam(id) {
+      const value = document.getElementById(id).value;
+      if (!value) return "";
+      const parsed = dayjs(value);
+      return parsed.isValid() ? parsed.format("YYYY-MM-DDTHH:mm") : value;
+    }
+
+    const trafficHoverLinePlugin = {
+      id: "trafficHoverLine",
+      afterDraw(chart) {
+        if (chart.canvas.id !== "trafficChart" || !chart.tooltip?._active?.length) return;
+        const activePoint = chart.tooltip._active[0];
+        const { ctx, chartArea } = chart;
+        const x = activePoint.element.x;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(x, chartArea.top);
+        ctx.lineTo(x, chartArea.bottom);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = "rgba(148,163,184,0.65)";
+        ctx.setLineDash([4, 4]);
+        ctx.stroke();
+        ctx.restore();
+      }
+    };
 
     function buildCompressedTicks(maxValue) {
       const target = Math.max(1, Number(maxValue) || 1);
@@ -432,7 +473,7 @@
         message: `IP <strong>${escapeHtml(d.ip)}</strong> sent <strong>${escapeHtml(d.count)}</strong> requests at ${formatPeriod(d.minute)}`
       }));
 
-      const pageSize = parseInt(document.getElementById("threshold-page-size").value) || 5;
+      const pageSize = numberInputValue("threshold-page-size", 5, 1, 50);
       let currentPage = 0;
       const totalPages = Math.ceil(alerts.length / pageSize);
 
@@ -491,6 +532,7 @@
 
       trafficChart = new Chart(document.getElementById("trafficChart"), {
         type: "line",
+        plugins: [trafficHoverLinePlugin],
         data: {
           labels,
           datasets: [{
@@ -766,17 +808,9 @@
       const ip = document.getElementById("search-ip").value.trim();
       const path = document.getElementById("search-url").value.trim();
       const status = document.getElementById("search-status").value;
-      const from = document.getElementById("search-from").value;
-      const to = document.getElementById("search-to").value;
-      const pageSize = Math.min(Math.max(parseInt(document.getElementById("search-page-size").value) || 25, 1), 1000);
-      const hasSearchCriteria = Boolean(ip || path || status || from || to);
-
-      if (!hasSearchCriteria) {
-        document.getElementById("search-results").innerHTML = "";
-        document.getElementById("search-count").textContent = "Enter at least one search filter.";
-        document.getElementById("search-pagination").innerHTML = "";
-        return;
-      }
+      const from = searchDateParam("search-from");
+      const to = searchDateParam("search-to");
+      const pageSize = numberInputValue("search-page-size", 25, 1, 1000);
 
       const params = new URLSearchParams({
         limit: String(pageSize),

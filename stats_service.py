@@ -191,9 +191,6 @@ class StatsService:
 
     def search_logs(self, ip, path, status, time_from, time_to, limit, offset=0):
         # search is not cached since it has many parameter combinations
-        if not any([ip, path, status is not None, time_from, time_to]):
-            return {"rows": [], "total": 0}
-
         where_clauses = []
         params: dict[str, object] = {"limit": limit, "offset": offset}
         if ip:
@@ -212,8 +209,9 @@ class StatsService:
             where_clauses.append("time <= :time_to")
             params["time_to"] = self._parse_datetime(time_to)
 
-        where_sql = " AND ".join(where_clauses)
-        total = self.fetch_scalar(f"SELECT COUNT(*) FROM logs WHERE {where_sql}", params)
+        where_sql = " AND ".join(where_clauses) or "1=1"
+        count_params = {key: value for key, value in params.items() if key not in {"limit", "offset"}}
+        total = self.fetch_scalar(f"SELECT COUNT(*) FROM logs WHERE {where_sql}", count_params)
         query = f"""
             SELECT ip, time, method, path, status, size
             FROM logs
