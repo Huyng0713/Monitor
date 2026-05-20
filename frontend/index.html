@@ -144,6 +144,139 @@
       color: #0f172a;
       font-weight: bold;
     }
+
+    .search-card {
+      background: #1b2033;
+      border: 1px solid #2f3852;
+      border-radius: 24px;
+      padding: 34px;
+      margin-bottom: 16px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    }
+
+    .search-card h2 {
+      font-size: 20px;
+      margin-bottom: 20px;
+      color: #a9b1c3;
+    }
+
+    .search-toolbar {
+      display: grid;
+      grid-template-columns: minmax(140px, 1fr) minmax(190px, 1.35fr) minmax(190px, 1fr) minmax(270px, 1.55fr) minmax(270px, 1.55fr) minmax(150px, 0.75fr) auto auto;
+      gap: 14px;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+
+    .search-control {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 42px;
+      gap: 10px;
+      align-items: center;
+      min-width: 0;
+    }
+
+    .search-control.page-size {
+      grid-template-columns: 110px auto;
+    }
+
+    .search-field {
+      width: 100%;
+      height: 52px;
+      padding: 0 20px;
+      background: #101629;
+      border: 1px solid #2a344e;
+      border-radius: 12px;
+      color: #d6dbea;
+      font-size: 16px;
+      outline: none;
+      min-width: 0;
+    }
+
+    .search-field::placeholder {
+      color: #8d96aa;
+    }
+
+    .search-field:focus {
+      border-color: #56b8f4;
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
+    }
+
+    .search-clear {
+      width: 42px;
+      height: 52px;
+      background: #273148;
+      border: none;
+      border-radius: 12px;
+      color: #aab3c5;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .search-page-label {
+      color: #8790a4;
+      font-size: 16px;
+      line-height: 1.25;
+    }
+
+    .search-action {
+      height: 52px;
+      padding: 0 30px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 15px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .search-action.primary {
+      background: #5bb8f1;
+      color: #07111e;
+    }
+
+    .search-action.secondary {
+      background: #344057;
+      color: #d6dbea;
+    }
+
+    .search-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    .search-table th {
+      text-align: left;
+      padding: 12px 10px;
+      color: #a3acbf;
+      border-bottom: 1px solid #35405b;
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .search-table td {
+      padding: 10px;
+      border-bottom: 1px solid #252e45;
+    }
+
+    @media (max-width: 1450px) {
+      .search-toolbar {
+        grid-template-columns: repeat(2, minmax(220px, 1fr));
+      }
+    }
+
+    @media (max-width: 720px) {
+      .search-card {
+        padding: 20px;
+        border-radius: 18px;
+      }
+
+      .search-toolbar {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 
@@ -166,18 +299,18 @@
   </div>
 
 
-  <div class="chart-card full-width" style="margin-bottom: 16px;">
+  <div class="search-card full-width">
     <h2>Search Logs</h2>
-    <div style="display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
-      <div class="field-wrap grow">
+    <div class="search-toolbar">
+      <div class="search-control">
         <input id="search-ip" class="search-field" type="text" placeholder="Search by IP...">
-        <button class="icon-btn" onclick="clearSearchField('search-ip')" title="Clear IP search">x</button>
+        <button class="search-clear" onclick="clearSearchField('search-ip')" title="Clear IP search">x</button>
       </div>
-      <div class="field-wrap grow-large" style="min-width:200px;">
+      <div class="search-control">
         <input id="search-url" class="search-field" type="text" placeholder="Search by URL...">
-        <button class="icon-btn" onclick="clearSearchField('search-url')" title="Clear URL search">x</button>
+        <button class="search-clear" onclick="clearSearchField('search-url')" title="Clear URL search">x</button>
       </div>
-      <div class="field-wrap">
+      <div class="search-control">
         <select id="search-status" class="search-field">
           <option value="">All Status Codes</option>
           <option value="200">200</option>
@@ -187,38 +320,32 @@
           <option value="404">404</option>
           <option value="500">500</option>
         </select>
-        <button class="icon-btn" onclick="clearSearchField('search-status')" title="Clear status search">x</button>
+        <button class="search-clear" onclick="clearSearchField('search-status')" title="Clear status search">x</button>
       </div>
-      <div class="field-wrap">
-        <input id="search-from" class="search-field" type="datetime-local">
-        <button class="icon-btn" onclick="clearSearchField('search-from')" title="Clear from date">x</button>
+      <div class="search-control">
+        <input id="search-from" class="search-field" type="text" placeholder="dd/mm/yyyy hh:mm:ss (From)">
+        <button class="search-clear" onclick="clearSearchField('search-from')" title="Clear from date">x</button>
       </div>
-      <div class="field-wrap">
-        <input id="search-to" class="search-field" type="datetime-local">
-        <button class="icon-btn" onclick="clearSearchField('search-to')" title="Clear to date">x</button>
+      <div class="search-control">
+        <input id="search-to" class="search-field" type="text" placeholder="dd/mm/yyyy hh:mm:ss (To)">
+        <button class="search-clear" onclick="clearSearchField('search-to')" title="Clear to date">x</button>
       </div>
-      <div class="field-wrap" style="min-width:120px;">
+      <div class="search-control page-size">
         <input id="search-page-size" class="search-field" type="number" value="25" min="1" max="1000" title="Results per page">
-        <span style="color:#64748b; font-size:13px;">per page</span>
+        <span class="search-page-label">per<br>page</span>
       </div>
-      <button onclick="runSearch()"
-        style="padding:8px 20px; background:#38bdf8; border:none; border-radius:8px; color:#0f172a; font-weight:bold; cursor:pointer;">
-        Search
-      </button>
-      <button onclick="clearSearch()"
-        style="padding:8px 20px; background:#334155; border:none; border-radius:8px; color:#e2e8f0; cursor:pointer;">
-        Clear
-      </button>
+      <button class="search-action primary" onclick="runSearch()">Search</button>
+      <button class="search-action secondary" onclick="clearSearch()">Clear</button>
     </div>
-    <table style="width:100%; border-collapse:collapse; font-size:13px;">
+    <table class="search-table">
       <thead>
         <tr>
-          <th style="text-align:left; padding:8px; color:#94a3b8; border-bottom:1px solid #334155;">IP</th>
-          <th style="text-align:left; padding:8px; color:#94a3b8; border-bottom:1px solid #334155;">Time</th>
-          <th style="text-align:left; padding:8px; color:#94a3b8; border-bottom:1px solid #334155;">Method</th>
-          <th style="text-align:left; padding:8px; color:#94a3b8; border-bottom:1px solid #334155;">Path</th>
-          <th style="text-align:left; padding:8px; color:#94a3b8; border-bottom:1px solid #334155;">Status</th>
-          <th style="text-align:left; padding:8px; color:#94a3b8; border-bottom:1px solid #334155;">Size</th>
+          <th>IP</th>
+          <th>Time</th>
+          <th>Method</th>
+          <th>Path</th>
+          <th>Status</th>
+          <th>Size</th>
         </tr>
       </thead>
       <tbody id="search-results"></tbody>
@@ -331,10 +458,12 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dayjs@1/plugin/customParseFormat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
     const API = "";
 
+    dayjs.extend(window.dayjs_plugin_customParseFormat);
     Chart.defaults.animation = false;
 
     let trafficChart;
@@ -344,6 +473,15 @@
     let useStatusLogScale = false;
     let useIpLogScale = false;
     const LOG_TICK_STEPS = [1, 2, 4, 6, 8];
+    const SEARCH_DATE_FORMATS = [
+      "DD/MM/YYYY HH:mm:ss",
+      "DD/MM/YYYY HH:mm",
+      "DD-MM-YYYY HH:mm:ss",
+      "DD-MM-YYYY HH:mm",
+      "YYYY-MM-DDTHH:mm",
+      "YYYY-MM-DD HH:mm:ss",
+      "YYYY-MM-DD HH:mm",
+    ];
 
     function formatPeriod(value) {
       if (!value) return "";
@@ -384,10 +522,10 @@
     }
 
     function searchDateParam(id) {
-      const value = document.getElementById(id).value;
+      const value = document.getElementById(id).value.trim();
       if (!value) return "";
-      const parsed = dayjs(value);
-      return parsed.isValid() ? parsed.format("YYYY-MM-DDTHH:mm") : value;
+      const parsed = dayjs(value, SEARCH_DATE_FORMATS, true);
+      return parsed.isValid() ? parsed.format("YYYY-MM-DDTHH:mm") : null;
     }
 
     const trafficHoverLinePlugin = {
@@ -814,6 +952,13 @@
       const from = searchDateParam("search-from");
       const to = searchDateParam("search-to");
       const pageSize = numberInputValue("search-page-size", 25, 1, 1000);
+
+      if (from === null || to === null) {
+        document.getElementById("search-results").innerHTML = "";
+        document.getElementById("search-count").textContent = "Use date format dd/mm/yyyy hh:mm:ss.";
+        document.getElementById("search-pagination").innerHTML = "";
+        return;
+      }
 
       const params = new URLSearchParams({
         limit: String(pageSize),
