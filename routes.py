@@ -10,7 +10,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
-from db import init_db
+from db import dispose_engine, init_db
 from log import get_log_paths, log_activity, log_exception, log_file_issue
 from stats_service import StatsService
 
@@ -25,12 +25,17 @@ CACHE_HEADERS = {"Cache-Control": "public, s-maxage=30, stale-while-revalidate=6
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     try:
-        init_db()
+        await init_db()
         log_activity("API startup completed")
-        yield
     except Exception:
-        log_exception("API lifespan startup failed")
-        raise
+        log_exception("API lifespan startup failed (database may be offline, server starting anyway)")
+    
+    yield
+    
+    try:
+        await dispose_engine()
+    except Exception:
+        log_exception("Failed to dispose database engine")
 
 
 app = FastAPI(lifespan=lifespan)
@@ -99,41 +104,42 @@ def index():
 
 
 @app.get("/stats/summary")
-def get_summary():
-    return json_cached(stats_service.get_summary())
+async def get_summary():
+    return json_cached(await stats_service.get_summary())
 
 
 @app.get("/stats/top-ips")
-def get_top_ips(limit: int = Query(default=10, ge=1, le=100)):
-    return json_cached(stats_service.get_top_ips(limit))
+async def get_top_ips(limit: int = Query(default=10, ge=1, le=100)):
+    return json_cached(await stats_service.get_top_ips(limit))
 
 
 @app.get("/stats/top-urls")
-def get_top_urls(limit: int = Query(default=10, ge=1, le=100)):
-    return json_cached(stats_service.get_top_urls(limit))
+async def get_top_urls(limit: int = Query(default=10, ge=1, le=100)):
+    return json_cached(await stats_service.get_top_urls(limit))
 
 
 @app.get("/stats/status-codes")
-def get_status_codes():
-    return json_cached(stats_service.get_status_codes())
+async def get_status_codes():
+    return json_cached(await stats_service.get_status_codes())
 
 
 @app.get("/stats/traffic")
-def get_traffic(
+async def get_traffic(
     granularity: str = "hour",
     ip: str = None,
     limit: int = Query(default=500, ge=1, le=2000),
+    offset: int = Query(default=0, ge=0),
 ):
-    return json_cached(stats_service.get_traffic(require_granularity(granularity), ip, limit))
+    return json_cached(await stats_service.get_traffic(require_granularity(granularity), ip, limit, offset))
 
 
 @app.get("/stats/anomalies")
-def get_anomalies():
-    return json_cached(stats_service.get_anomalies())
+async def get_anomalies():
+    return json_cached(await stats_service.get_anomalies())
 
 
 @app.get("/stats/search")
-def search_logs(
+async def search_logs(
     ip: str = None,
     path: str = None,
     status: int = None,
@@ -143,24 +149,46 @@ def search_logs(
     offset: int = Query(default=0, ge=0),
 ):
     # search is not cached
-    return stats_service.search_logs(ip, path, status, time_from, time_to, limit, offset)
+    try:
+        return await stats_service.search_logs(ip, path, status, time_from, time_to, limit, offset)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid datetime format") from exc
 
 
 @app.get("/stats/status-codes-over-time")
-def get_status_codes_over_time(
+async def get_status_codes_over_time(
     granularity: str = "hour",
     limit: int = Query(default=60, ge=1, le=1440),
+    offset: int = Query(default=0, ge=0),
 ):
-    return json_cached(stats_service.get_status_codes_over_time(require_granularity(granularity), limit))
+    return json_cached(await stats_service.get_status_codes_over_time(require_granularity(granularity), limit, offset))
 
 
 @app.get("/stats/logs")
-def get_system_logs(lines: int = Query(default=50, ge=1, le=500)):
+async def get_system_logs(lines: int = Query(default=50, ge=1, le=500)):
+    try:
+        db_logs = await stats_service.get_system_logs(lines)
+        if db_logs:
+            formatted_lines = []
+            for log in db_logs:
+                dt_str = log["created_at"]
+                if "T" in dt_str:
+                    dt_part, time_part = dt_str.split("T")
+                    time_clean = time_part.split(".")[0].split("+")[0]
+                    dt_str = f"{dt_part} {time_clean}"
+                
+                tb_suffix = f"\n{log['traceback']}" if log["traceback"] else ""
+                formatted_lines.append(f"{dt_str} [{log['level']}] {log['logger']} {log['message']}{tb_suffix}")
+            formatted_lines.reverse()
+            return {"lines": formatted_lines}
+    except Exception:
+        log_exception("Database system logs fetch failed, falling back to local files")
+
     log_paths = get_log_paths()
     try:
         with open(log_paths["error"], "r", encoding="utf-8") as file_obj:
             recent_lines = list(deque(file_obj, maxlen=lines))
-        log_activity("System log tail requested: lines=%s returned=%s", lines, len(recent_lines))
+        log_activity("System log tail requested (file fallback): lines=%s returned=%s", lines, len(recent_lines))
         return {"lines": recent_lines}
     except FileNotFoundError:
         log_file_issue(logging.ERROR, "System log file missing: path=%s", log_paths["error"])

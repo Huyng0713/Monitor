@@ -1,3 +1,4 @@
+import asyncio
 import time
 from datetime import datetime
 
@@ -26,151 +27,200 @@ class StatsService:
     def __init__(self, connection_factory=read_connection):
         self.connection_factory = connection_factory
         self._cache = {}
-        self._cache_ttl = 30  # seconds
+        self._cache_ttl = 120
+        self._cache_lock = asyncio.Lock()
 
-    def _cached(self, key, fn):
+    async def _cached(self, key, fn):
         now = time.time()
-        if key in self._cache:
-            value, ts = self._cache[key]
+        cached = self._cache.get(key)
+        if cached:
+            value, ts = cached
             if now - ts < self._cache_ttl:
                 return value
-        result = fn()
-        self._cache[key] = (result, now)
-        return result
 
-    def fetch_scalar(self, query: str, params: dict | None = None) -> int:
-        with self.connection_factory() as session:
-            result = session.execute(text(query), params or {}).scalar()
-        return int(result or 0)
+        async with self._cache_lock:
+            now = time.time()
+            cached = self._cache.get(key)
+            if cached:
+                value, ts = cached
+                if now - ts < self._cache_ttl:
+                    return value
+            result = await fn()
+            self._cache[key] = (result, now)
+            return result
 
-    def fetch_rows(self, query: str, params: dict | None = None):
-        with self.connection_factory() as session:
-            return session.execute(text(query), params or {}).mappings().all()
+    async def fetch_scalar(self, query: str, params: dict | None = None, session = None) -> int:
+        if session:
+            result = await session.execute(text(query), params or {})
+            value = result.scalar()
+            return int(value or 0)
+        async with self.connection_factory() as session_ctx:
+            result = await session_ctx.execute(text(query), params or {})
+            value = result.scalar()
+        return int(value or 0)
 
-    def get_summary(self):
-        return self._cached("summary", self._fetch_summary)
+    async def fetch_rows(self, query: str, params: dict | None = None, session = None):
+        if session:
+            result = await session.execute(text(query), params or {})
+            return result.mappings().all()
+        async with self.connection_factory() as session_ctx:
+            result = await session_ctx.execute(text(query), params or {})
+            return result.mappings().all()
 
-    def _fetch_summary(self):
-        row = self.fetch_rows("""
+    async def get_summary(self):
+        return await self._cached("summary", self._fetch_summary)
+
+    async def _fetch_summary(self):
+        rows = await self.fetch_rows("""
             SELECT
                 COUNT(*) AS total_requests,
                 COUNT(DISTINCT ip) AS unique_ips,
                 COUNT(*) FILTER (WHERE status >= 400) AS errors
             FROM logs
-        """)[0]
+        """)
+        row = rows[0]
         return {
             "total_requests": row["total_requests"],
             "unique_ips": row["unique_ips"],
             "errors": row["errors"],
         }
 
-    def get_top_ips(self, limit: int):
-        return self._cached(f"top_ips:{limit}", lambda: [
-            {"ip": row["ip"], "count": row["count"]}
-            for row in self.fetch_rows("""
-                SELECT ip, COUNT(*) as count FROM logs
-                GROUP BY ip ORDER BY count DESC LIMIT :limit
-            """, {"limit": limit})
-        ])
+    async def get_top_ips(self, limit: int):
+        return await self._cached(f"top_ips:{limit}", lambda: self._fetch_top_ips(limit))
 
-    def get_top_urls(self, limit: int):
-        return self._cached(f"top_urls:{limit}", lambda: [
-            {"path": row["path"], "count": row["count"]}
-            for row in self.fetch_rows("""
-                SELECT path, COUNT(*) as count FROM logs
-                GROUP BY path ORDER BY count DESC LIMIT :limit
-            """, {"limit": limit})
-        ])
+    async def _fetch_top_ips(self, limit: int):
+        rows = await self.fetch_rows("""
+            SELECT ip, COUNT(*) as count FROM logs
+            GROUP BY ip ORDER BY count DESC LIMIT :limit
+        """, {"limit": limit})
+        return [{"ip": row["ip"], "count": row["count"]} for row in rows]
 
-    def get_status_codes(self):
-        return self._cached("status_codes", lambda: [
-            {"status": row["status"], "count": row["count"]}
-            for row in self.fetch_rows("""
-                SELECT status, COUNT(*) as count FROM logs
-                GROUP BY status ORDER BY count DESC
-            """)
-        ])
+    async def get_top_urls(self, limit: int):
+        return await self._cached(f"top_urls:{limit}", lambda: self._fetch_top_urls(limit))
 
-    def get_traffic(self, granularity: str, ip: str | None, limit: int):
-        key = f"traffic:{granularity}:{ip or ''}:{limit}"
-        return self._cached(key, lambda: self._fetch_traffic(granularity, ip, limit))
+    async def _fetch_top_urls(self, limit: int):
+        rows = await self.fetch_rows("""
+            SELECT path, COUNT(*) as count FROM logs
+            GROUP BY path ORDER BY count DESC LIMIT :limit
+        """, {"limit": limit})
+        return [{"path": row["path"], "count": row["count"]} for row in rows]
 
-    def _fetch_traffic(self, granularity: str, ip: str | None, limit: int):
+    async def get_status_codes(self):
+        return await self._cached("status_codes", self._fetch_status_codes)
+
+    async def _fetch_status_codes(self):
+        rows = await self.fetch_rows("""
+            SELECT status, COUNT(*) as count FROM logs
+            GROUP BY status ORDER BY count DESC
+        """)
+        return [{"status": row["status"], "count": row["count"]} for row in rows]
+
+    async def get_traffic(self, granularity: str, ip: str | None, limit: int, offset: int = 0):
+        key = f"traffic:{granularity}:{ip or ''}:{limit}:{offset}"
+        return await self._cached(key, lambda: self._fetch_traffic(granularity, ip, limit, offset))
+
+    async def _fetch_traffic(self, granularity: str, ip: str | None, limit: int, offset: int):
+        unit = DATE_TRUNC_UNITS[granularity]
+        interval = INTERVAL_UNITS[granularity]
         period_expr = self._period_expr(granularity, "l")
-        params: dict[str, object] = {"limit": limit}
-        where_clause = ""
+        params: dict[str, object] = {
+            "start_mult": limit + offset - 1,
+            "end_mult": offset
+        }
+        where_clause_ip = ""
+        where_clause_ip_and = ""
         if ip:
-            where_clause = "WHERE l.ip LIKE :ip"
+            where_clause_ip = "WHERE l.ip LIKE :ip"
+            where_clause_ip_and = "AND l.ip LIKE :ip"
             params["ip"] = f"%{ip}%"
 
         query = f"""
-            WITH recent_periods AS (
-                SELECT period FROM (
-                    SELECT DISTINCT {period_expr} AS period
-                    FROM logs l
-                    {where_clause}
-                    ORDER BY period DESC
-                    LIMIT :limit
-                ) recent
-                ORDER BY period
+            WITH bounds AS (
+                SELECT COALESCE(MAX(time), NOW()) AS max_time
+                FROM logs l
+                {where_clause_ip}
             )
-            SELECT recent_periods.period, COUNT(*) AS count
+            SELECT
+                {period_expr} AS period,
+                COUNT(*) AS count
             FROM logs l
-            JOIN recent_periods ON {period_expr} = recent_periods.period
-            {where_clause}
-            GROUP BY recent_periods.period
-            ORDER BY recent_periods.period
+            CROSS JOIN bounds
+            WHERE l.time >= bounds.max_time - (:start_mult * INTERVAL '{interval}')
+              AND l.time <= bounds.max_time - (:end_mult * INTERVAL '{interval}')
+              {where_clause_ip_and}
+            GROUP BY period
+            ORDER BY period
         """
-        rows = self.fetch_rows(query, params)
+        rows = await self.fetch_rows(query, params)
         return [{"period": row["period"], "count": row["count"]} for row in rows]
 
-    def get_anomalies(self):
-        return self._cached("anomalies", lambda: self._fetch_anomalies())
+    async def get_anomalies(self):
+        return await self._cached("anomalies", self._fetch_anomalies)
 
-    def _fetch_anomalies(self):
-        high_freq = self.fetch_rows("""
-            SELECT ip, to_char(date_trunc('minute', time), 'YYYY-MM-DD"T"HH24:MI') as minute, COUNT(*) as count
-            FROM logs GROUP BY ip, minute
-            HAVING COUNT(*) > 100
-            ORDER BY count DESC
-        """)
-        many_404 = self.fetch_rows("""
-            SELECT ip, COUNT(*) as count FROM logs
-            WHERE status = 404
-            GROUP BY ip HAVING COUNT(*) > 20
-            ORDER BY count DESC
-        """)
-        many_500 = self.fetch_rows("""
-            SELECT ip, COUNT(*) as count FROM logs
-            WHERE status = 500
-            GROUP BY ip HAVING COUNT(*) > 10
-            ORDER BY count DESC
-        """)
+    async def _fetch_anomalies(self):
+        async with self.connection_factory() as session:
+            high_freq = await self.fetch_rows("""
+                WITH bounds AS (
+                    SELECT COALESCE(MAX(time), NOW()) AS max_time FROM logs
+                )
+                SELECT ip, to_char(date_trunc('minute', l.time), 'YYYY-MM-DD"T"HH24:MI') as minute, COUNT(*) as count
+                FROM logs l
+                CROSS JOIN bounds
+                WHERE l.time >= bounds.max_time - INTERVAL '24 hours'
+                GROUP BY ip, minute
+                HAVING COUNT(*) > 100
+                ORDER BY count DESC
+            """, session=session)
+
+            many_404 = await self.fetch_rows("""
+                WITH bounds AS (
+                    SELECT COALESCE(MAX(time), NOW()) AS max_time FROM logs
+                )
+                SELECT ip, COUNT(*) as count
+                FROM logs l
+                CROSS JOIN bounds
+                WHERE l.status = 404 AND l.time >= bounds.max_time - INTERVAL '24 hours'
+                GROUP BY ip HAVING COUNT(*) > 20
+                ORDER BY count DESC
+            """, session=session)
+
+            many_500 = await self.fetch_rows("""
+                WITH bounds AS (
+                    SELECT COALESCE(MAX(time), NOW()) AS max_time FROM logs
+                )
+                SELECT ip, COUNT(*) as count
+                FROM logs l
+                CROSS JOIN bounds
+                WHERE l.status = 500 AND l.time >= bounds.max_time - INTERVAL '24 hours'
+                GROUP BY ip HAVING COUNT(*) > 10
+                ORDER BY count DESC
+            """, session=session)
+
         return {
             "high_frequency": [{"ip": row["ip"], "minute": row["minute"], "count": row["count"]} for row in high_freq],
             "many_404s": [{"ip": row["ip"], "count": row["count"]} for row in many_404],
             "many_500s": [{"ip": row["ip"], "count": row["count"]} for row in many_500],
         }
 
-    def get_status_codes_over_time(self, granularity: str, limit: int):
-        return self._cached(
-            f"status_over_time:{granularity}:{limit}",
-            lambda: self._fetch_status_codes_over_time(granularity, limit),
+    async def get_status_codes_over_time(self, granularity: str, limit: int, offset: int = 0):
+        return await self._cached(
+            f"status_over_time:{granularity}:{limit}:{offset}",
+            lambda: self._fetch_status_codes_over_time(granularity, limit, offset),
         )
 
-    def _fetch_status_codes_over_time(self, granularity: str, limit: int):
+    async def _fetch_status_codes_over_time(self, granularity: str, limit: int, offset: int):
         unit = DATE_TRUNC_UNITS[granularity]
         interval = INTERVAL_UNITS[granularity]
         fmt = TO_CHAR_FORMATS[granularity]
-        rows = self.fetch_rows(f"""
+        rows = await self.fetch_rows(f"""
             WITH bounds AS (
                 SELECT date_trunc('{unit}', COALESCE(MAX(time), NOW())) AS end_period
                 FROM logs
             ),
             periods AS (
                 SELECT generate_series(
-                    end_period - ((:limit - 1) * INTERVAL '{interval}'),
-                    end_period,
+                    end_period - (:start_mult * INTERVAL '{interval}'),
+                    end_period - (:end_mult * INTERVAL '{interval}'),
                     INTERVAL '{interval}'
                 ) AS period
                 FROM bounds
@@ -182,8 +232,8 @@ class StatsService:
                     COUNT(*) AS count
                 FROM logs l
                 CROSS JOIN bounds
-                WHERE l.time >= bounds.end_period - ((:limit - 1) * INTERVAL '{interval}')
-                  AND l.time < bounds.end_period + INTERVAL '{interval}'
+                WHERE l.time >= bounds.end_period - (:start_mult * INTERVAL '{interval}')
+                  AND l.time < bounds.end_period - (:end_mult * INTERVAL '{interval}') + INTERVAL '{interval}'
                 GROUP BY period, l.status
             )
             SELECT
@@ -193,7 +243,7 @@ class StatsService:
             FROM periods
             LEFT JOIN counts ON counts.period = periods.period
             ORDER BY periods.period, counts.status
-        """, {"limit": limit})
+        """, {"start_mult": limit + offset - 1, "end_mult": offset})
         grouped = {}
         all_statuses = set()
         for row in rows:
@@ -211,8 +261,7 @@ class StatsService:
         ]
         return {"labels": labels, "datasets": datasets}
 
-    def search_logs(self, ip, path, status, time_from, time_to, limit, offset=0):
-        # search is not cached since it has many parameter combinations
+    async def search_logs(self, ip, path, status, time_from, time_to, limit, offset=0):
         where_clauses = []
         params: dict[str, object] = {"limit": limit, "offset": offset}
         if ip:
@@ -233,26 +282,27 @@ class StatsService:
 
         where_sql = " AND ".join(where_clauses) or "1=1"
         count_params = {key: value for key, value in params.items() if key not in {"limit", "offset"}}
-        total = self.fetch_scalar(f"SELECT COUNT(*) FROM logs WHERE {where_sql}", count_params)
-        query = f"""
-            SELECT ip, time, method, path, status, size
-            FROM logs
-            WHERE {where_sql}
-            ORDER BY time DESC
-            LIMIT :limit OFFSET :offset
-        """
-        rows = self.fetch_rows(query, params)
+        total, rows = await asyncio.gather(
+            self.fetch_scalar(f"SELECT COUNT(*) FROM logs WHERE {where_sql}", count_params),
+            self.fetch_rows(f"""
+                SELECT ip, time, method, path, status, size
+                FROM logs
+                WHERE {where_sql}
+                ORDER BY time DESC
+                LIMIT :limit OFFSET :offset
+            """, params),
+        )
         return {
             "rows": [
-            {
-                "ip": row["ip"],
-                "time": row["time"].isoformat() if hasattr(row["time"], "isoformat") else row["time"],
-                "method": row["method"],
-                "path": row["path"],
-                "status": row["status"],
-                "size": row["size"],
-            }
-            for row in rows
+                {
+                    "ip": row["ip"],
+                    "time": row["time"].isoformat() if hasattr(row["time"], "isoformat") else row["time"],
+                    "method": row["method"],
+                    "path": row["path"],
+                    "status": row["status"],
+                    "size": row["size"],
+                }
+                for row in rows
             ],
             "total": total,
         }
@@ -265,3 +315,21 @@ class StatsService:
 
     def _parse_datetime(self, value: str) -> datetime:
         return datetime.fromisoformat(value)
+
+    async def get_system_logs(self, limit: int):
+        rows = await self.fetch_rows("""
+            SELECT created_at, logger, level, message, traceback
+            FROM system_logs
+            ORDER BY created_at DESC
+            LIMIT :limit
+        """, {"limit": limit})
+        return [
+            {
+                "created_at": row["created_at"].isoformat() if hasattr(row["created_at"], "isoformat") else row["created_at"],
+                "logger": row["logger"],
+                "level": row["level"],
+                "message": row["message"],
+                "traceback": row["traceback"]
+            }
+            for row in rows
+        ]
