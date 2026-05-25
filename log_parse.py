@@ -13,9 +13,10 @@ LOG_PATTERN = re.compile(
     r"\[(?P<time>[^\]]+)\] "
     r'"(?P<method>\S+) (?P<path>\S+) \S+" '
     r"(?P<status>\d{3}) "
-    r"(?P<size>\d+) "
+    r"(?P<size>\d+|-) "
     r'"(?P<referer>[^"]*)" '
     r'"(?P<user_agent>[^"]*)"'
+    r"(?:\s+.*)?$"
 )
 
 TIME_FORMAT = "%d/%b/%Y:%H:%M:%S %z"
@@ -28,7 +29,7 @@ class LogEntry:
     method: str
     path: str
     status: int
-    size: int
+    size: int | None
     referer: str
     user_agent: str
 
@@ -48,7 +49,7 @@ def parse_line(line: str) -> Optional[LogEntry]:
             method=data["method"],
             path=data["path"],
             status=int(data["status"]),
-            size=int(data["size"]),
+            size=None if data["size"] == "-" else int(data["size"]),
             referer=data["referer"],
             user_agent=data["user_agent"],
         )

@@ -1,4 +1,6 @@
 fastapi==0.116.1
-psycopg[binary]==3.2.9
-SQLAlchemy==2.0.41
+SQLAlchemy[asyncio]==2.0.41
+asyncpg==0.30.0
+alembic==1.16.2
+python-dotenv==1.1.1
 uvicorn==0.35.0

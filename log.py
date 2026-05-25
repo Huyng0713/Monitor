@@ -1,5 +1,7 @@
 import logging
 import os
+import asyncio
+import traceback
 from logging.handlers import RotatingFileHandler
 from typing import Dict
 
@@ -67,20 +69,47 @@ error_logger = _configure_logger(ERROR_LOGGER_NAME, logging.ERROR, ERROR_LOG_PAT
 file_logger = _configure_logger(FILE_LOGGER_NAME, logging.INFO, FILE_LOG_PATH)
 
 
+def log_to_db(logger_name: str, level_name: str, message: str, traceback_str: str | None = None):
+    try:
+        loop = asyncio.get_running_loop()
+        if loop.is_running():
+            from db import insert_system_log
+            loop.create_task(insert_system_log(logger_name, level_name, message, traceback_str))
+    except RuntimeError:
+        pass
+    except Exception:
+        pass
+
+
+def _safe_format(message: str, args) -> str:
+    if not args:
+        return message
+    try:
+        return message % args
+    except Exception:
+        return f"{message} (args: {args})"
+
+
 def log_activity(message: str, *args):
     app_logger.info(message, *args)
+    log_to_db(APP_LOGGER_NAME, "INFO", _safe_format(message, args))
 
 
 def log_error(message: str, *args):
     error_logger.error(message, *args)
+    log_to_db(ERROR_LOGGER_NAME, "ERROR", _safe_format(message, args))
 
 
 def log_exception(message: str, *args):
     error_logger.exception(message, *args)
+    tb_str = traceback.format_exc()
+    log_to_db(ERROR_LOGGER_NAME, "ERROR", _safe_format(message, args), tb_str)
 
 
 def log_file_issue(level: int, message: str, *args):
     file_logger.log(level, message, *args)
+    level_name = logging.getLevelName(level)
+    log_to_db(FILE_LOGGER_NAME, level_name, _safe_format(message, args))
 
 
 def get_log_paths() -> Dict[str, str]:

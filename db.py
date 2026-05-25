@@ -1,10 +1,13 @@
+import asyncio
 import os
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, UniqueConstraint, create_engine
+from sqlalchemy import DateTime, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.pool import NullPool
 
 from env import load_dotenv
 from log import log_activity, log_exception
@@ -12,16 +15,34 @@ from log_parse import LogEntry
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+RAW_DATABASE_URL = os.getenv("DATABASE_URL")
 BULK_INSERT_BATCH_SIZE = int(os.getenv("BULK_INSERT_BATCH_SIZE", "500"))
+IS_VERCEL = os.getenv("VERCEL") == "1"
+RUN_SCHEMA_CREATE = os.getenv("DB_CREATE_ALL_ON_STARTUP", "0") == "1"
 
-if not DATABASE_URL:
+if not RAW_DATABASE_URL:
     raise RuntimeError("DATABASE_URL environment variable is required")
 
-if DATABASE_URL.startswith("postgresql://"):
-    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
-elif DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
+
+def normalize_database_url(url: str) -> str:
+    if url.startswith("postgresql+asyncpg://"):
+        pass
+    elif url.startswith("postgresql+psycopg://"):
+        url = url.replace("postgresql+psycopg://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+        
+    if "postgresql+asyncpg://" in url and "prepared_statement_cache_size" not in url:
+        if "?" in url:
+            url += "&prepared_statement_cache_size=0"
+        else:
+            url += "?prepared_statement_cache_size=0"
+    return url
+
+
+DATABASE_URL = normalize_database_url(RAW_DATABASE_URL)
 
 
 class Base(DeclarativeBase):
@@ -45,51 +66,73 @@ class LogRecord(Base):
     user_agent: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
-# Singleton engine — created once, reused across requests
-engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10,
-    pool_timeout=30,
-    pool_recycle=300,
-)
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+class SystemLogRecord(Base):
+    __tablename__ = "system_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, index=True)
+    logger: Mapped[str] = mapped_column(String, nullable=False)
+    level: Mapped[str] = mapped_column(String, nullable=False)
+    message: Mapped[str] = mapped_column(String, nullable=False)
+    traceback: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
-@contextmanager
-def read_connection():
-    session = SessionLocal()
+def _engine_options() -> dict:
+    options = {
+        "pool_pre_ping": True,
+        "pool_recycle": 300,
+        "connect_args": {
+            "statement_cache_size": 0,
+        },
+    }
+    if IS_VERCEL:
+        options.update({"poolclass": NullPool})
+    else:
+        options.update({"pool_size": 5, "max_overflow": 10, "pool_timeout": 30})
+    return options
+
+
+engine = create_async_engine(DATABASE_URL, **_engine_options())
+SessionLocal = async_sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+
+@asynccontextmanager
+async def read_connection():
+    async with SessionLocal() as session:
+        try:
+            yield session
+        except Exception:
+            log_exception("Database read failed")
+            raise
+
+
+@asynccontextmanager
+async def write_connection():
+    async with SessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            log_exception("Database write failed")
+            raise
+
+
+async def init_db():
+    if not RUN_SCHEMA_CREATE:
+        log_activity("Database runtime schema creation skipped")
+        return
     try:
-        yield session
-    except Exception:
-        log_exception("Database read failed")
-        raise
-    finally:
-        session.close()
-
-
-@contextmanager
-def write_connection():
-    session = SessionLocal()
-    try:
-        yield session
-        session.commit()
-    except Exception:
-        session.rollback()
-        log_exception("Database write failed")
-        raise
-    finally:
-        session.close()
-
-
-def init_db():
-    try:
-        Base.metadata.create_all(bind=engine)
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
         log_activity("Database schema ready")
     except Exception:
         log_exception("Failed to initialize database schema")
         raise
+
+
+async def dispose_engine():
+    await engine.dispose()
 
 
 def _entry_to_row(entry: LogEntry) -> dict:
@@ -105,35 +148,35 @@ def _entry_to_row(entry: LogEntry) -> dict:
     }
 
 
-def insert_entry(entry: LogEntry):
-    with write_connection() as session:
+async def insert_entry(entry: LogEntry):
+    async with write_connection() as session:
         statement = pg_insert(LogRecord).values(_entry_to_row(entry))
-        statement = statement.on_conflict_do_nothing(constraint="uq_logs_identity")
-        session.execute(statement)
+        statement = statement.on_conflict_do_nothing(index_elements=["ip", "time", "method", "path", "status"])
+        await session.execute(statement)
 
 
-def insert_many(entries):
+async def insert_many(entries):
     batch = []
     inserted_total = 0
     received_total = 0
 
-    def flush_batch(rows):
+    async def flush_batch(rows):
         if not rows:
             return 0
-        with write_connection() as session:
+        async with write_connection() as session:
             statement = pg_insert(LogRecord).values(rows)
-            statement = statement.on_conflict_do_nothing(constraint="uq_logs_identity")
-            result = session.execute(statement)
+            statement = statement.on_conflict_do_nothing(index_elements=["ip", "time", "method", "path", "status"])
+            result = await session.execute(statement)
         return result.rowcount if result.rowcount is not None and result.rowcount >= 0 else 0
 
     for entry in entries:
         batch.append(_entry_to_row(entry))
         received_total += 1
         if len(batch) >= BULK_INSERT_BATCH_SIZE:
-            inserted_total += flush_batch(batch)
+            inserted_total += await flush_batch(batch)
             batch = []
 
-    inserted_total += flush_batch(batch)
+    inserted_total += await flush_batch(batch)
 
     if received_total == 0:
         log_activity("insert_many called with no entries")
@@ -143,6 +186,18 @@ def insert_many(entries):
     return inserted_total
 
 
+async def insert_system_log(logger: str, level: str, message: str, traceback: str | None = None):
+    async with write_connection() as session:
+        log_record = SystemLogRecord(
+            logger=logger,
+            level=level,
+            message=message,
+            traceback=traceback,
+            created_at=datetime.utcnow()
+        )
+        session.add(log_record)
+
+
 if __name__ == "__main__":
-    init_db()
+    asyncio.run(init_db())
     print("Database initialized successfully")
