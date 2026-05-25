@@ -1,6 +1,6 @@
 # Nginx Monitor
 
-Ứng dụng theo dõi access log Nginx bằng FastAPI + PostgreSQL, hiển thị dashboard thống kê và hỗ trợ mở rộng thêm nguồn log hoặc loại thống kê mới.
+Ứng dụng theo dõi access log Nginx bằng FastAPI + PostgreSQL/Supabase, hiển thị dashboard thống kê và hỗ trợ mở rộng thêm nguồn log hoặc loại thống kê mới.
 
 ## Tính năng
 
@@ -18,7 +18,7 @@
 
 - `main.py`: điểm vào để chạy API.
 - `routes.py`: định nghĩa HTTP API.
-- `db.py`: kết nối và thao tác PostgreSQL qua SQLAlchemy.
+- `db.py`: kết nối và thao tác PostgreSQL qua SQLAlchemy async + asyncpg.
 - `log.py`: cấu hình logging tập trung.
 - `log_parse.py`: parser cho access log.
 - `log_sources.py`: abstraction cho nguồn log.
@@ -50,7 +50,7 @@ cp .env.example .env
 Ví dụ với PostgreSQL:
 
 ```bash
-export DATABASE_URL="postgresql+psycopg://USER:PASSWORD@HOST:5432/DB_NAME"
+export DATABASE_URL="postgresql+asyncpg://USER:PASSWORD@HOST:5432/DB_NAME"
 ```
 
 Hoặc điền trực tiếp trong `.env`:
@@ -62,6 +62,20 @@ LOG_LEVEL=INFO
 ```
 
 Với Vercel, thêm `DATABASE_URL` tại Project Settings → Environment Variables.
+
+## Migration database
+
+Production nên dùng Alembic thay vì tạo schema khi API khởi động:
+
+```bash
+alembic upgrade head
+```
+
+Mặc định API không chạy `create_all()` lúc startup. Nếu cần tạo schema nhanh trong môi trường local/dev, bật:
+
+```bash
+DB_CREATE_ALL_ON_STARTUP=1 python3 main.py
+```
 
 ## Chạy ứng dụng
 
@@ -89,7 +103,8 @@ Các bước deploy:
 Lưu ý quan trọng:
 
 - Vercel dùng serverless function, nên filesystem là tạm thời.
-- Database giờ phải là PostgreSQL ngoài qua `DATABASE_URL`.
+- Database giờ phải là PostgreSQL/Supabase ngoài qua `DATABASE_URL`.
+- Chạy `alembic upgrade head` trước hoặc trong pipeline deploy để đảm bảo bảng/index đã sẵn sàng.
 - Log file vẫn chạy tạm ở `/tmp/nginx-monitor` khi deploy trên Vercel.
 - Nếu cần production thật, nên chuyển log sang dịch vụ ngoài hoặc stdout collector.
 - Vercel phù hợp để demo UI/API hơn là chạy hệ thống monitor ghi file liên tục.
