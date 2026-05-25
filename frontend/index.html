@@ -4,12 +4,28 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nginx Monitor</title>
+  <title>Nginx Monitor Dashboard</title>
   <style>
-    #statusChartContainer {
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
-      width: 100%;
-      position: relative;
+    :root {
+      --bg-primary: #030712;
+      --bg-secondary: #0b1329;
+      --card-bg: rgba(15, 23, 42, 0.45);
+      --border-color: rgba(255, 255, 255, 0.06);
+      --text-primary: #f3f4f6;
+      --text-secondary: #9ca3af;
+      --primary: #38bdf8;
+      --primary-hover: #0ea5e9;
+      --primary-glow: rgba(56, 189, 248, 0.15);
+      --accent: #818cf8;
+      --accent-glow: rgba(129, 140, 248, 0.15);
+      --success: #10b981;
+      --success-glow: rgba(16, 185, 129, 0.1);
+      --warning: #fbbf24;
+      --warning-glow: rgba(251, 191, 36, 0.1);
+      --danger: #f87171;
+      --danger-glow: rgba(248, 113, 113, 0.1);
     }
 
     * {
@@ -19,278 +35,573 @@
     }
 
     body {
-      font-family: sans-serif;
-      background: #0f172a;
-      color: #e2e8f0;
-      padding: 24px;
+      font-family: 'Outfit', sans-serif;
+      background-color: var(--bg-primary);
+      background-image: 
+        radial-gradient(circle at 10% 20%, rgba(129, 140, 248, 0.08) 0%, transparent 45%),
+        radial-gradient(circle at 90% 80%, rgba(56, 189, 248, 0.08) 0%, transparent 45%);
+      background-attachment: fixed;
+      color: var(--text-primary);
+      padding: 30px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
     }
 
-    h1 {
-      font-size: 24px;
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.3);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
       margin-bottom: 24px;
-      color: #38bdf8;
+      flex-wrap: wrap;
+      gap: 16px;
     }
 
-    h2 {
-      font-size: 16px;
-      margin-bottom: 12px;
-      color: #94a3b8;
+    .title-area h1 {
+      font-size: 28px;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 4px;
     }
 
+    .title-area p {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .db-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.15);
+      border-radius: 20px;
+      color: #34d399;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .db-status .dot {
+      width: 8px;
+      height: 8px;
+      background-color: var(--success);
+      border-radius: 50%;
+      box-shadow: 0 0 10px var(--success);
+    }
+
+    .live-indicator {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      background-color: var(--text-secondary);
+      border-radius: 50%;
+      transition: all 0.3s ease;
+      margin-right: 2px;
+    }
+
+    .live-indicator.active {
+      background-color: var(--success);
+      box-shadow: 0 0 8px var(--success);
+      animation: live-pulse 1.2s infinite;
+    }
+
+    @keyframes live-pulse {
+      0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+      70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    }
+
+    /* Live Countdown Progress Bar */
+    #live-progress-container {
+      width: 100%;
+      height: 3px;
+      background: rgba(255, 255, 255, 0.02);
+      margin-bottom: 24px;
+      border-radius: 1px;
+      overflow: hidden;
+      display: none;
+    }
+
+    #live-progress-bar {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary), var(--accent));
+      transition: width 0.1s linear;
+      box-shadow: 0 0 8px var(--primary);
+    }
+
+    /* Cards */
     .summary {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 16px;
-      margin-bottom: 24px;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+      margin-bottom: 30px;
     }
 
-    .card {
-      background: #1e293b;
-      border-radius: 12px;
-      padding: 20px;
+    .card, .chart-card, .search-card {
+      background: var(--card-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+    }
+
+    .card:hover, .chart-card:hover, .search-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(56, 189, 248, 0.25);
+      box-shadow: 0 15px 40px -10px rgba(0, 0, 0, 0.6), 0 0 15px 0 rgba(56, 189, 248, 0.05);
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 3px;
+      background: linear-gradient(90deg, var(--primary), var(--accent));
+      opacity: 0.8;
+    }
+
+    .card.errors::before {
+      background: var(--danger);
+    }
+
+    .card.health::before {
+      background: var(--success);
     }
 
     .card .value {
       font-size: 36px;
-      font-weight: bold;
-      color: #38bdf8;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: -0.5px;
+      margin-bottom: 4px;
     }
 
     .card .label {
-      font-size: 13px;
-      color: #64748b;
-      margin-top: 4px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
     }
 
     .grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
-      gap: 16px;
-    }
-
-    .chart-card {
-      background: #1e293b;
-      border-radius: 12px;
-      padding: 20px;
+      gap: 20px;
     }
 
     .full-width {
       grid-column: span 2;
     }
 
-    .range-btn {
-      background: #334155;
-      border: none;
-      color: #e2e8f0;
-      padding: 8px 14px;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: 0.2s;
-    }
-
-    .range-btn.active {
-      background: #38bdf8;
-      color: #0f172a;
-      font-weight: bold;
-    }
-
-    .field-wrap {
+    .chart-card h2, .search-card h2 {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 20px;
       display: flex;
       align-items: center;
+      gap: 8px;
+    }
+
+    /* Controls & Buttons */
+    .btn-group {
+      display: flex;
       gap: 6px;
-      min-width: 150px;
     }
 
-    .field-wrap.grow {
-      flex: 1;
-    }
-
-    .field-wrap.grow-large {
-      flex: 2;
-    }
-
-    .search-field {
-      width: 100%;
-      padding: 8px 12px;
-      background: #0f172a;
-      border: 1px solid #334155;
+    .range-btn, .toggle-btn, .btn-primary, .btn-secondary {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      color: var(--text-primary);
+      padding: 8px 16px;
       border-radius: 8px;
-      color: #e2e8f0;
-    }
-
-    .icon-btn {
-      width: 34px;
-      height: 34px;
-      background: #334155;
-      border: none;
-      border-radius: 8px;
-      color: #e2e8f0;
       cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .range-btn:hover, .toggle-btn:hover, .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .range-btn.active, .toggle-btn.active {
+      background: var(--primary);
+      color: #040815;
+      font-weight: 600;
+      border-color: var(--primary);
+      box-shadow: 0 0 12px var(--primary-glow);
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #040815;
+      font-weight: 600;
+      border-color: var(--primary);
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-hover);
+      box-shadow: 0 0 15px var(--primary-glow);
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
       line-height: 1;
-      flex: 0 0 auto;
     }
 
-    .toggle-btn {
-      padding: 6px 14px;
-      background: #334155;
-      border: none;
-      border-radius: 8px;
-      color: #e2e8f0;
-      cursor: pointer;
+    .badge.danger {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--danger);
+      border: 1px solid rgba(239, 68, 68, 0.2);
     }
 
-    .toggle-btn.active {
-      background: #38bdf8;
-      color: #0f172a;
-      font-weight: bold;
+    .badge.warning {
+      background: rgba(251, 191, 36, 0.15);
+      color: var(--warning);
+      border: 1px solid rgba(251, 191, 36, 0.2);
     }
 
-    .search-card {
-      background: #1b2033;
-      border: 1px solid #2f3852;
-      border-radius: 24px;
-      padding: 30px;
-      margin-bottom: 16px;
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-      overflow: hidden;
+    .badge.info {
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--primary);
+      border: 1px solid rgba(56, 189, 248, 0.2);
     }
 
-    .search-card h2 {
-      font-size: 20px;
-      margin-bottom: 20px;
-      color: #a9b1c3;
-    }
-
+    /* Inputs */
     .search-toolbar {
       display: grid;
-      grid-template-columns: minmax(120px, 0.9fr) minmax(170px, 1.15fr) minmax(165px, 1fr) minmax(220px, 1.35fr) minmax(220px, 1.35fr) minmax(130px, 0.7fr) minmax(112px, auto) minmax(92px, auto);
-      gap: 10px;
+      grid-template-columns: 1fr 1fr 1fr 1.2fr 1.2fr auto auto;
+      gap: 12px;
       align-items: center;
       margin-bottom: 24px;
-      min-width: 0;
     }
 
     .search-control {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 38px;
-      gap: 8px;
-      align-items: center;
-      min-width: 0;
-    }
-
-    .search-control.page-size {
-      grid-template-columns: minmax(72px, 1fr) auto;
+      position: relative;
+      width: 100%;
     }
 
     .search-field {
       width: 100%;
-      height: 48px;
-      padding: 0 16px;
-      background: #101629;
-      border: 1px solid #2a344e;
-      border-radius: 12px;
-      color: #d6dbea;
-      font-size: 15px;
+      height: 44px;
+      padding: 0 36px 0 12px;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      color: var(--text-primary);
+      font-size: 14px;
       outline: none;
-      min-width: 0;
-    }
-
-    .search-field::placeholder {
-      color: #8d96aa;
+      transition: all 0.2s ease;
+      font-family: inherit;
     }
 
     .search-field:focus {
-      border-color: #56b8f4;
-      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-glow);
+      background: rgba(15, 23, 42, 0.85);
+    }
+
+    select.search-field {
+      appearance: none;
+      cursor: pointer;
     }
 
     .search-clear {
-      width: 38px;
-      height: 48px;
-      background: #273148;
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
       border: none;
-      border-radius: 12px;
-      color: #aab3c5;
-      cursor: pointer;
+      color: var(--text-secondary);
       font-size: 16px;
-      font-weight: 700;
-    }
-
-    .search-page-label {
-      color: #8790a4;
-      font-size: 15px;
-      line-height: 1.25;
-    }
-
-    .search-action {
-      height: 48px;
-      padding: 0 22px;
-      border: none;
-      border-radius: 10px;
       cursor: pointer;
-      font-size: 15px;
-      font-weight: 700;
-      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      transition: all 0.2s ease;
     }
 
-    .search-action.primary {
-      background: #5bb8f1;
-      color: #07111e;
+    .search-clear:hover {
+      color: var(--text-primary);
+      background: rgba(255, 255, 255, 0.08);
     }
 
-    .search-action.secondary {
-      background: #344057;
-      color: #d6dbea;
+    /* Tables */
+    .table-container {
+      width: 100%;
+      overflow-x: auto;
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+      background: rgba(15, 23, 42, 0.2);
     }
 
-    .search-table {
+    table {
       width: 100%;
       border-collapse: collapse;
       font-size: 14px;
-    }
-
-    .search-table th {
       text-align: left;
-      padding: 12px 10px;
-      color: #a3acbf;
-      border-bottom: 1px solid #35405b;
-      font-size: 16px;
-      font-weight: 700;
     }
 
-    .search-table td {
-      padding: 10px;
-      border-bottom: 1px solid #252e45;
+    th {
+      background: rgba(15, 23, 42, 0.6);
+      padding: 14px 16px;
+      color: var(--text-secondary);
+      font-weight: 600;
+      border-bottom: 1px solid var(--border-color);
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
 
-    @media (max-width: 1650px) {
+    td {
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+      color: var(--text-primary);
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    /* Anomaly Center styling */
+    .threat-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .threat-tabs {
+      display: flex;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 4px;
+      border-radius: 10px;
+      border: 1px solid var(--border-color);
+    }
+
+    .threat-tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+      font-family: inherit;
+    }
+
+    .threat-tab-btn.active {
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--danger);
+      font-weight: 600;
+      box-shadow: inset 0 0 10px rgba(239, 68, 68, 0.05);
+    }
+
+    .threat-tab-panel {
+      display: none;
+    }
+
+    .threat-tab-panel.active {
+      display: block;
+    }
+
+    .pulse-indicator {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      background-color: var(--danger);
+      border-radius: 50%;
+      box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+      animation: pulse 1.6s infinite;
+    }
+
+    @keyframes pulse {
+      0% {
+        transform: scale(0.9);
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5);
+      }
+      70% {
+        transform: scale(1);
+        box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+      }
+      100% {
+        transform: scale(0.9);
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+      }
+    }
+
+    /* Terminal Console */
+    .terminal {
+      background: #020617;
+      border-radius: 12px;
+      border: 1px solid #1e293b;
+      overflow: hidden;
+      box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.8);
+    }
+
+    .terminal-bar {
+      background: #0f172a;
+      padding: 10px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #1e293b;
+    }
+
+    .terminal-dots {
+      display: flex;
+      gap: 6px;
+    }
+
+    .terminal-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+    .terminal-dot.red { background: #ef4444; }
+    .terminal-dot.yellow { background: #eab308; }
+    .terminal-dot.green { background: #22c55e; }
+
+    .terminal-title {
+      font-size: 13px;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text-secondary);
+    }
+
+    .terminal-body {
+      padding: 16px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      max-height: 300px;
+      overflow-y: auto;
+      line-height: 1.6;
+      color: #e2e8f0;
+      text-align: left;
+    }
+
+    .terminal-row {
+      margin-bottom: 4px;
+      white-space: pre-wrap;
+    }
+
+    /* Media queries */
+    @media (max-width: 1440px) {
+      .summary {
+        grid-template-columns: repeat(2, 1fr);
+      }
       .search-toolbar {
         grid-template-columns: repeat(3, minmax(0, 1fr));
       }
     }
 
-    @media (max-width: 1100px) {
-      .search-toolbar {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+    @media (max-width: 1024px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+      .full-width {
+        grid-column: span 1;
       }
     }
 
-    @media (max-width: 720px) {
-      .search-card {
-        padding: 20px;
-        border-radius: 18px;
+    @media (max-width: 768px) {
+      .summary {
+        grid-template-columns: 1fr;
       }
-
       .search-toolbar {
         grid-template-columns: 1fr;
+      }
+      body {
+        padding: 15px;
       }
     }
   </style>
 </head>
 
 <body>
-  <h1>Nginx Monitor Dashboard</h1>
+  <header>
+    <div class="title-area">
+      <h1>Nginx Monitor</h1>
+      <p></p>
+    </div>
+    <div class="header-controls">
+      <button id="live-toggle" class="toggle-btn" onclick="toggleLiveMode()">
+        <span class="live-indicator"></span>
+        <span>Live: OFF</span>
+      </button>
+      <div class="db-status">
+        <span class="dot"></span>
+        <span>Supabase Connected</span>
+      </div>
+    </div>
+  </header>
 
+  <!-- Live Countdown Progress Bar -->
+  <div id="live-progress-container">
+    <div id="live-progress-bar"></div>
+  </div>
+
+  <!-- Summary & Health Cards -->
   <div class="summary">
     <div class="card">
       <div class="value" id="total-requests">...</div>
@@ -301,170 +612,292 @@
       <div class="label">Unique IPs</div>
     </div>
     <div class="card">
-      <div class="value" id="errors">...</div>
-      <div class="label">Errors (4xx/5xx)</div>
+      <div class="value" id="error-rate">...</div>
+      <div class="label">Average Error Rate</div>
+    </div>
+    <div class="card health">
+      <div class="value" id="health-score">...</div>
+      <div class="label">System Health Score</div>
     </div>
   </div>
 
+  <!-- Threat & Anomaly Detection Center -->
+  <div class="chart-card full-width" style="margin-bottom: 24px;">
+    <div class="threat-header">
+      <div class="threat-title">
+        <h2 style="color: var(--danger); font-size: 20px; display: inline-flex; align-items: center; gap: 10px;">
+          <span class="pulse-indicator"></span> THREAT & ANOMALY DETECTION
+        </h2>
+        <p style="color: var(--text-secondary); font-size: 13px; margin-top: 4px;">Potential issues or scanner patterns flagged over the last 24 hours.</p>
+      </div>
+      <div class="threat-tabs">
+        <button id="tab-rate" class="threat-tab-btn active" onclick="switchThreatTab('rate')">Request Spikes</button>
+        <button id="tab-scanners" class="threat-tab-btn" onclick="switchThreatTab('scanners')">404 Directory Scanners</button>
+        <button id="tab-errors" class="threat-tab-btn" onclick="switchThreatTab('errors')">500 Server Errors</button>
+      </div>
+    </div>
+    
+    <div class="threat-content">
+      <!-- Tab 1: Rate Spikes -->
+      <div id="threat-rate-panel" class="threat-tab-panel active">
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>IP Address</th>
+                <th>Spike Time</th>
+                <th>Requests Count</th>
+                <th>Severity</th>
+              </tr>
+            </thead>
+            <tbody id="anomaly-rate-list">
+              <tr><td colspan="4" style="text-align:center;color:var(--text-secondary);">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="rate-pagination" style="display:flex; align-items:center; gap:12px; margin-top:12px;"></div>
+      </div>
+      
+      <!-- Tab 2: 404 Scanners -->
+      <div id="threat-scanners-panel" class="threat-tab-panel">
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>IP Address</th>
+                <th>404 Count</th>
+                <th>Severity</th>
+              </tr>
+            </thead>
+            <tbody id="anomaly-scanner-list">
+              <tr><td colspan="3" style="text-align:center;color:var(--text-secondary);">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="scanner-pagination" style="display:flex; align-items:center; gap:12px; margin-top:12px;"></div>
+      </div>
+      
+      <!-- Tab 3: 500 Error Triggers -->
+      <div id="threat-errors-panel" class="threat-tab-panel">
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>IP Address</th>
+                <th>500 Errors Triggered</th>
+                <th>Severity</th>
+              </tr>
+            </thead>
+            <tbody id="anomaly-error-list">
+              <tr><td colspan="3" style="text-align:center;color:var(--text-secondary);">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="error-pagination" style="display:flex; align-items:center; gap:12px; margin-top:12px;"></div>
+      </div>
+    </div>
+  </div>
 
-  <div class="search-card full-width">
-    <h2>Search Logs</h2>
+  <!-- Search Card -->
+  <div class="search-card full-width" style="margin-bottom: 24px;">
+    <h2>
+      <svg style="width:20px;height:20px;color:var(--primary);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+      Search Log Database
+    </h2>
     <div class="search-toolbar">
       <div class="search-control">
-        <input id="search-ip" class="search-field" type="text" placeholder="Search by IP...">
-        <button class="search-clear" onclick="clearSearchField('search-ip')" title="Clear IP search">x</button>
+        <input id="search-ip" class="search-field" type="text" placeholder="IP Address...">
+        <button class="search-clear" onclick="clearSearchField('search-ip')" title="Clear IP">×</button>
       </div>
       <div class="search-control">
-        <input id="search-url" class="search-field" type="text" placeholder="Search by URL...">
-        <button class="search-clear" onclick="clearSearchField('search-url')" title="Clear URL search">x</button>
+        <input id="search-url" class="search-field" type="text" placeholder="Request Path (e.g. /api)...">
+        <button class="search-clear" onclick="clearSearchField('search-url')" title="Clear URL">×</button>
       </div>
       <div class="search-control">
         <select id="search-status" class="search-field">
-          <option value="">All Status Codes</option>
-          <option value="200">200</option>
-          <option value="301">301</option>
-          <option value="307">307</option>
-          <option value="400">400</option>
-          <option value="404">404</option>
-          <option value="500">500</option>
+          <option value="">All Statuses</option>
+          <option value="200">200 OK</option>
+          <option value="301">301 Moved</option>
+          <option value="304">304 Not Modified</option>
+          <option value="400">400 Bad Request</option>
+          <option value="403">403 Forbidden</option>
+          <option value="404">404 Not Found</option>
+          <option value="500">500 Server Error</option>
         </select>
-        <button class="search-clear" onclick="clearSearchField('search-status')" title="Clear status search">x</button>
+        <button class="search-clear" onclick="clearSearchField('search-status')" title="Clear status">×</button>
       </div>
       <div class="search-control">
-        <input id="search-from" class="search-field" type="text" placeholder="dd/mm/yyyy hh:mm:ss (From)">
-        <button class="search-clear" onclick="clearSearchField('search-from')" title="Clear from date">x</button>
+        <input id="search-from" class="search-field" type="text" placeholder="Start Date (dd/mm/yyyy hh:mm)...">
+        <button class="search-clear" onclick="clearSearchField('search-from')" title="Clear date">×</button>
       </div>
       <div class="search-control">
-        <input id="search-to" class="search-field" type="text" placeholder="dd/mm/yyyy hh:mm:ss (To)">
-        <button class="search-clear" onclick="clearSearchField('search-to')" title="Clear to date">x</button>
+        <input id="search-to" class="search-field" type="text" placeholder="End Date (dd/mm/yyyy hh:mm)...">
+        <button class="search-clear" onclick="clearSearchField('search-to')" title="Clear date">×</button>
       </div>
-      <div class="search-control page-size">
-        <input id="search-page-size" class="search-field" type="number" value="25" min="1" max="1000" title="Results per page">
-        <span class="search-page-label">per<br>page</span>
+      <div class="search-control" style="width: 80px;">
+        <input id="search-page-size" class="search-field" type="number" value="15" min="1" max="500" title="Results page size" style="padding-right: 5px;">
       </div>
-      <button class="search-action primary" onclick="runSearch()">Search</button>
-      <button class="search-action secondary" onclick="clearSearch()">Clear</button>
+      <div class="btn-group">
+        <button class="btn-primary" onclick="runSearch(0)">Search</button>
+        <button class="btn-secondary" onclick="clearSearch()">Reset</button>
+      </div>
     </div>
-    <table class="search-table">
-      <thead>
-        <tr>
-          <th>IP</th>
-          <th>Time</th>
-          <th>Method</th>
-          <th>Path</th>
-          <th>Status</th>
-          <th>Size</th>
-        </tr>
-      </thead>
-      <tbody id="search-results"></tbody>
-    </table>
-    <p id="search-count" style="margin-top:8px; color:#64748b; font-size:12px;"></p>
-    <div id="search-pagination" style="display:flex; align-items:center; gap:12px; margin-top:12px;"></div>
+
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>IP Address</th>
+            <th>Timestamp</th>
+            <th>Method</th>
+            <th>Path</th>
+            <th>Status</th>
+            <th>Bytes</th>
+          </tr>
+        </thead>
+        <tbody id="search-results">
+          <tr><td colspan="6" style="text-align:center;color:var(--text-secondary);">Enter search criteria or click search to browse all logs.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; flex-wrap:wrap; gap:12px;">
+      <p id="search-count" style="color: var(--text-secondary); font-size:13px;"></p>
+      <div id="search-pagination" style="display:flex; align-items:center; gap:8px;"></div>
+    </div>
   </div>
 
-  <div class="chart-card full-width" style="margin-bottom: 16px;">
-    <h2>Error Breakdown</h2>
-    <table style="width:100%; border-collapse: collapse;">
-      <thead>
-        <tr>
-          <th style="text-align:left; padding: 8px; color:#94a3b8; border-bottom: 1px solid #334155;">Status Code</th>
-          <th style="text-align:left; padding: 8px; color:#94a3b8; border-bottom: 1px solid #334155;">Count</th>
-        </tr>
-      </thead>
-      <tbody id="error-table"></tbody>
-    </table>
-  </div>
-
+  <!-- Charts & Lists Grid -->
   <div class="grid">
+    <!-- Traffic Chart -->
     <div class="chart-card full-width">
-
-      <div
-        style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
-
-        <h2>Traffic Over Time</h2>
-
-        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-          <input id="traffic-ip-search" type="text" placeholder="Search IP traffic..." style="
-          padding:8px 12px;
-          background:#0f172a;
-          border:1px solid #334155;
-          border-radius:8px;
-          color:#e2e8f0;
-          min-width:220px;
-        " />
-          <button id="traffic-scale-toggle" class="toggle-btn" onclick="toggleTrafficScale()">Log Scale</button>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
+        <h2>
+          <svg style="width:20px;height:20px;color:var(--primary);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+          Traffic Speed (Requests / Hour)
+        </h2>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input id="traffic-ip-search" type="text" placeholder="Filter by IP..." class="search-field" style="width:180px; height:36px; font-size:13px;">
+          <button id="traffic-scale-toggle" class="toggle-btn" onclick="toggleTrafficScale()" style="height:36px; padding:0 12px; font-size:13px;">Log Scale</button>
         </div>
-
       </div>
-      <canvas id="trafficChart"></canvas>
-
+      <div id="traffic-chart-container" style="height: 350px; position: relative; width: 100%;">
+        <canvas id="trafficChart" style="height: 350px; width: 100%;"></canvas>
+      </div>
     </div>
+
+    <!-- Status Codes Chart -->
     <div class="chart-card full-width">
-
-      <div
-        style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
-
-        <h2>Status Codes Over Time</h2>
-
-        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-          <button class="range-btn" data-range="minute">Minutes</button>
-          <button class="range-btn active" data-range="hour">Hours</button>
-          <button class="range-btn" data-range="day">Days</button>
-          <input id="status-limit" type="number" value="60" min="10" max="1440"
-            style="width:80px; padding:6px 10px; background:#0f172a; border:1px solid #334155; border-radius:8px; color:#e2e8f0;">
-          <span id="status-limit-unit" style="color:#64748b; font-size:13px;">hours</span>
-          <button id="scale-toggle" class="toggle-btn" onclick="toggleStatusScale()">
-            Log Scale
-          </button>
-        </div>
-
-      </div>
-
-      <div style="overflow-x: auto;">
-        <div id="statusChartContainer" style="min-width: 800px;">
-          <canvas id="statusChart"></canvas>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
+        <h2>
+          <svg style="width:20px;height:20px;color:var(--accent);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+          Status Codes Over Time
+        </h2>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <div class="btn-group">
+            <button class="range-btn" data-range="minute" style="padding: 6px 12px; font-size: 13px;">Min</button>
+            <button class="range-btn active" data-range="hour" style="padding: 6px 12px; font-size: 13px;">Hour</button>
+            <button class="range-btn" data-range="day" style="padding: 6px 12px; font-size: 13px;">Day</button>
+          </div>
+          <input id="status-limit" type="number" value="48" min="5" max="500" class="search-field" style="width:70px; height:34px; font-size:13px; padding:0 8px;">
+          <span id="status-limit-unit" style="color:var(--text-secondary); font-size:13px;">hours</span>
+          <button id="scale-toggle" class="toggle-btn" onclick="toggleStatusScale()" style="height:34px; padding:0 12px; font-size:13px;">Log Scale</button>
         </div>
       </div>
-
+      <div style="overflow-x: auto; width: 100%;">
+        <div id="statusChartWrapper" style="min-width: 800px; height: 350px; position: relative;">
+          <canvas id="statusChart" style="height: 350px; width: 100%;"></canvas>
+        </div>
+      </div>
     </div>
+
+    <!-- Top IPs List -->
     <div class="chart-card">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:12px;">
-        <h2 style="margin-bottom:0;">Top IPs</h2>
-        <button id="ip-scale-toggle" class="toggle-btn" onclick="toggleIpScale()">Log Scale</button>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+        <h2>
+          <svg style="width:20px;height:20px;color:var(--primary);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+          Top Requesting IPs
+        </h2>
+        <button id="ip-scale-toggle" class="toggle-btn" onclick="toggleIpScale()" style="height:32px; padding:0 10px; font-size:12px;">Log Scale</button>
       </div>
-      <canvas id="ipChart"></canvas>
+      <div id="ip-chart-container" style="height: 300px; position: relative;">
+        <canvas id="ipChart" style="height: 300px; width: 100%;"></canvas>
+      </div>
     </div>
+
+    <!-- Top Paths / Error Breakdown -->
     <div class="chart-card">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-        <h2 style="color:#f87171;">IPs Over Threshold</h2>
-        <div style="display:flex; align-items:center; gap:8px;">
-          <input id="threshold-page-size" type="number" value="5" min="1" max="50"
-            style="width:60px; padding:6px 10px; background:#0f172a; border:1px solid #334155; border-radius:8px; color:#e2e8f0;">
-          <span style="color:#64748b; font-size:13px;">per page</span>
+      <div class="threat-header" style="margin-bottom: 12px; border-bottom: none; padding-bottom: 0;">
+        <div class="threat-tabs" style="width: 100%;">
+          <button id="tab-top-paths" class="threat-tab-btn active" onclick="switchRightTab('paths')" style="flex:1;">Top URLs/Paths</button>
+          <button id="tab-error-codes" class="threat-tab-btn" onclick="switchRightTab('codes')" style="flex:1;">Errors Breakdown</button>
         </div>
       </div>
-      <div id="threshold-table"></div>
+      
+      <!-- Panel Top Paths -->
+      <div id="right-panel-paths" class="threat-tab-panel active" style="margin-top: 10px;">
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Path</th>
+                <th style="width: 100px;">Count</th>
+              </tr>
+            </thead>
+            <tbody id="top-paths-table">
+              <tr><td colspan="2" style="text-align:center;color:var(--text-secondary);">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+      <!-- Panel Error Codes -->
+      <div id="right-panel-codes" class="threat-tab-panel" style="margin-top: 10px;">
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Status Code</th>
+                <th style="width: 100px;">Count</th>
+              </tr>
+            </thead>
+            <tbody id="error-codes-table">
+              <tr><td colspan="2" style="text-align:center;color:var(--text-secondary);">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
-  <div class="chart-card full-width" style="margin-top: 16px;">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-      <h2>System Logs</h2>
-      <button onclick="loadSystemLogs()"
-        style="padding:6px 14px; background:#334155; border:none; border-radius:8px; color:#e2e8f0; cursor:pointer;">
-        Refresh
-      </button>
+
+  <!-- Terminal Style Logger -->
+  <div class="chart-card full-width" style="margin-top: 24px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h2 style="margin-bottom:0;">
+        <svg style="width:20px;height:20px;color:var(--accent);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+        System Logs Console
+      </h2>
+      <div style="display:flex; gap:8px;">
+        <button onclick="loadSystemLogs()" class="btn-secondary" style="height:32px; padding:0 12px; font-size:12px;">Refresh</button>
+      </div>
     </div>
-    <div id="system-logs" style="
-      background:#0f172a;
-      border-radius:8px;
-      padding:16px;
-      font-family:monospace;
-      font-size:12px;
-      max-height:300px;
-      overflow-y:auto;
-    "></div>
+    
+    <div class="terminal">
+      <div class="terminal-bar">
+        <div class="terminal-dots">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+        </div>
+        <div class="terminal-title">system_logs_stream</div>
+        <div style="width: 50px;"></div>
+      </div>
+      <div id="system-logs" class="terminal-body">
+        <div class="terminal-row" style="color: var(--text-secondary);">Connecting to system logs database...</div>
+      </div>
+    </div>
   </div>
 
+  <!-- Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dayjs@1/plugin/customParseFormat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -472,14 +905,31 @@
     const API = "";
 
     dayjs.extend(window.dayjs_plugin_customParseFormat);
-    Chart.defaults.animation = false;
+    
+    // Use default Chart.js animations instead of custom object which caused interpolator errors
+    Chart.defaults.color = '#9ca3af';
+    Chart.defaults.borderColor = 'rgba(255, 255, 255, 0.05)';
 
+    // Global references
     let trafficChart;
     let statusChart;
     let ipChart;
     let useTrafficLogScale = false;
     let useStatusLogScale = false;
     let useIpLogScale = false;
+    
+    // Cache anomaly listings
+    let rateSpikesData = [];
+    let scannersData = [];
+    let errorsData = [];
+
+    // Live Polling References
+    let liveInterval = null;
+    let liveCountdown = null;
+    let liveModeActive = false;
+    const REFRESH_RATE_MS = 6000;
+    let countdownProgress = 0;
+
     const LOG_TICK_STEPS = [1, 2, 4, 6, 8];
     const SEARCH_DATE_FORMATS = [
       "DD/MM/YYYY HH:mm:ss",
@@ -491,6 +941,22 @@
       "YYYY-MM-DD HH:mm",
     ];
 
+    // Glow Plugin for Chart.js
+    const glowPlugin = {
+      id: 'glow',
+      beforeDatasetDraw(chart, args) {
+        const { ctx } = chart;
+        ctx.save();
+        ctx.shadowColor = args.meta.dataset.options.borderColor || 'transparent';
+        ctx.shadowBlur = 8;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 4;
+      },
+      afterDatasetDraw(chart) {
+        chart.ctx.restore();
+      }
+    };
+
     function formatPeriod(value) {
       if (!value) return "";
       const rawValue = String(value);
@@ -498,17 +964,18 @@
       const parsed = dayjs(parseValue);
       if (!parsed.isValid()) return rawValue.replace("T", " ");
       if (/^\d{4}-\d{2}-\d{2}$/.test(rawValue)) return parsed.format("DD-MM-YYYY");
-      if (/^\d{4}-\d{2}-\d{2}T\d{2}$/.test(rawValue)) return parsed.format("DD-MM-YYYY HH");
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}$/.test(rawValue)) return parsed.format("DD-MM-YYYY HH:00");
       return parsed.format("DD-MM-YYYY HH:mm");
     }
 
     function formatDateTime(value) {
       const parsed = dayjs(value);
-      return parsed.isValid() ? parsed.format("DD-MM-YYYY HH:mm") : formatPeriod(String(value || "").slice(0, 16));
+      return parsed.isValid() ? parsed.format("DD-MM-YYYY HH:mm:ss") : formatPeriod(String(value || "").slice(0, 19));
     }
 
     function setToggleState(id, active) {
-      document.getElementById(id).classList.toggle("active", active);
+      const el = document.getElementById(id);
+      if (el) el.classList.toggle("active", active);
     }
 
     function escapeHtml(value) {
@@ -522,6 +989,7 @@
 
     function numberInputValue(id, fallback, min, max) {
       const input = document.getElementById(id);
+      if (!input) return fallback;
       let value = parseInt(input.value, 10);
       if (Number.isNaN(value)) value = fallback;
       value = Math.min(Math.max(value, min), max);
@@ -530,49 +998,151 @@
     }
 
     function searchDateParam(id) {
-      const value = document.getElementById(id).value.trim();
+      const el = document.getElementById(id);
+      if (!el) return "";
+      const value = el.value.trim();
       if (!value) return "";
       const parsed = dayjs(value, SEARCH_DATE_FORMATS, true);
-      return parsed.isValid() ? parsed.format("YYYY-MM-DDTHH:mm") : null;
+      return parsed.isValid() ? parsed.format("YYYY-MM-DDTHH:mm:ss") : null;
     }
 
-    const trafficHoverLinePlugin = {
-      id: "trafficHoverLine",
-      afterDraw(chart) {
-        if (chart.canvas.id !== "trafficChart" || !chart.tooltip?._active?.length) return;
-        const activePoint = chart.tooltip._active[0];
-        const { ctx, chartArea } = chart;
-        const x = activePoint.element.x;
-
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(x, chartArea.top);
-        ctx.lineTo(x, chartArea.bottom);
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = "rgba(148,163,184,0.65)";
-        ctx.setLineDash([4, 4]);
-        ctx.stroke();
-        ctx.restore();
+    async function fetchJson(path, options = {}) {
+      const res = await fetch(`${API}${path}`, options);
+      let payload = null;
+      try {
+        payload = await res.json();
+      } catch (error) {
+        payload = null;
       }
-    };
+      if (!res.ok) {
+        throw new Error(payload?.detail || `API Request failed with status ${res.status}`);
+      }
+      return payload;
+    }
 
+    function renderPanelError(id, message, retryFn = '') {
+      const node = document.getElementById(id);
+      if (!node) return;
+      const retryHtml = retryFn ? `<button onclick="${retryFn}" class="btn-primary" style="margin-top:12px; padding:6px 16px; font-size:12px;">Retry</button>` : '';
+      
+      if (node.tagName === "TBODY") {
+        node.innerHTML = `<tr><td colspan="10" style="padding:24px; text-align:center; color:var(--danger);">
+          <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+            <svg style="width:24px;height:24px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+            <span style="font-weight: 500;">${escapeHtml(message)}</span>
+            ${retryHtml}
+          </div>
+        </td></tr>`;
+        return;
+      }
+      
+      node.innerHTML = `
+        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:30px; text-align:center; color:var(--danger); background:rgba(239,68,68,0.05); border:1px solid rgba(239,68,68,0.1); border-radius:12px; height: 100%;">
+          <svg style="width:32px;height:32px;margin-bottom:8px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+          <span style="font-weight:600;">Panel Load Failed</span>
+          <span style="font-size:13px;color:var(--text-secondary);margin-top:4px;">${escapeHtml(message)}</span>
+          ${retryHtml}
+        </div>
+      `;
+    }
+
+    // Live Auto-Refresh controls
+    function toggleLiveMode() {
+      liveModeActive = !liveModeActive;
+      const btn = document.getElementById("live-toggle");
+      const progressContainer = document.getElementById("live-progress-container");
+      
+      btn.classList.toggle("active", liveModeActive);
+      btn.querySelector("span:last-child").textContent = liveModeActive ? "Live: ON" : "Live: OFF";
+      btn.querySelector(".live-indicator").classList.toggle("active", liveModeActive);
+
+      if (liveModeActive) {
+        progressContainer.style.display = "block";
+        startLivePolling();
+      } else {
+        progressContainer.style.display = "none";
+        stopLivePolling();
+      }
+    }
+
+    function startLivePolling() {
+      clearInterval(liveInterval);
+      clearInterval(liveCountdown);
+      
+      countdownProgress = 0;
+      
+      liveInterval = setInterval(async () => {
+        countdownProgress = 0;
+        await refreshDashboardData();
+      }, REFRESH_RATE_MS);
+      
+      const stepMs = 100;
+      const totalSteps = REFRESH_RATE_MS / stepMs;
+      
+      liveCountdown = setInterval(() => {
+        countdownProgress += (100 / totalSteps);
+        document.getElementById("live-progress-bar").style.width = `${Math.min(100, countdownProgress)}%`;
+      }, stepMs);
+    }
+
+    function stopLivePolling() {
+      clearInterval(liveInterval);
+      clearInterval(liveCountdown);
+      document.getElementById("live-progress-bar").style.width = "0%";
+    }
+
+    async function refreshDashboardData() {
+      await Promise.all([
+        loadSummary(),
+        loadThreatAndAnomalies(),
+        loadTopIPs(),
+        loadTraffic(document.getElementById("traffic-ip-search").value.trim()),
+        loadStatusCodes(document.querySelector(".range-btn.active").dataset.range),
+        loadRightStats(),
+        loadSystemLogs()
+      ]);
+    }
+
+    // Tab Switcher for Threat Panel
+    function switchThreatTab(tabName) {
+      document.querySelectorAll('.threat-tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.threat-tab-panel').forEach(panel => panel.classList.remove('active'));
+      
+      document.getElementById(`tab-${tabName}`).classList.add('active');
+      document.getElementById(`threat-${tabName}-panel`).classList.add('active');
+    }
+
+    // Tab Switcher for Path/Codes Panel
+    function switchRightTab(tabName) {
+      document.querySelectorAll('#right-panel-paths, #right-panel-codes').forEach(panel => panel.classList.remove('active'));
+      document.getElementById(`tab-top-paths`).classList.remove('active');
+      document.getElementById(`tab-error-codes`).classList.remove('active');
+      
+      if (tabName === 'paths') {
+        document.getElementById('tab-top-paths').classList.add('active');
+        document.getElementById('right-panel-paths').classList.add('active');
+      } else {
+        document.getElementById('tab-error-codes').classList.add('active');
+        document.getElementById('right-panel-codes').classList.add('active');
+      }
+    }
+
+    // Log Compression Axis Tools
     function buildCompressedTicks(maxValue) {
       const target = Math.max(1, Number(maxValue) || 1);
       const ticks = [0];
       let multiplier = 1;
 
-      while (ticks.length === 0 || ticks[ticks.length - 1] < target) {
+      while (ticks[ticks.length - 1] < target) {
         LOG_TICK_STEPS.forEach(step => ticks.push(step * multiplier));
         multiplier *= 10;
       }
-
       return ticks;
     }
 
     function compressedValue(value, ticks) {
       const numericValue = Number(value);
       if (!numericValue || numericValue < 1) return 0;
-
       const exactIndex = ticks.indexOf(numericValue);
       if (exactIndex !== -1) return exactIndex;
 
@@ -583,7 +1153,6 @@
           return (i - 1) + ((numericValue - start) / (end - start));
         }
       }
-
       return ticks.length - 1;
     }
 
@@ -607,121 +1176,239 @@
       };
     }
 
-    async function loadThresholdIPs() {
-      const res = await fetch(`${API}/stats/anomalies`);
-      const data = await res.json();
-      const container = document.getElementById("threshold-table");
-
-      if (data.high_frequency.length === 0) {
-        container.innerHTML = `<p style="color:#34d399;">✓ No IPs over threshold</p>`;
-        return;
-      }
-
-      const alerts = data.high_frequency.map(d => ({
-        level: "red",
-        message: `IP <strong>${escapeHtml(d.ip)}</strong> sent <strong>${escapeHtml(d.count)}</strong> requests at ${formatPeriod(d.minute)}`
-      }));
-
-      const pageSize = numberInputValue("threshold-page-size", 5, 1, 50);
-      let currentPage = 0;
-      const totalPages = Math.ceil(alerts.length / pageSize);
-
-      function renderPage(page) {
-        const start = page * pageSize;
-        const pageAlerts = alerts.slice(start, start + pageSize);
-        container.innerHTML = pageAlerts.map(a => `
-          <div style="padding:10px 16px;margin-bottom:8px;border-radius:8px;border-left:4px solid #f87171;background:rgba(248,113,113,0.1);color:#e2e8f0;font-size:14px;">${a.message}</div>
-        `).join("");
-        container.innerHTML += `
-          <div style="display:flex;align-items:center;gap:12px;margin-top:12px;">
-            <button onclick="thresholdPage(${page - 1})" ${page === 0 ? 'disabled' : ''}
-              style="padding:6px 14px;background:#334155;border:none;border-radius:8px;color:#e2e8f0;cursor:pointer;opacity:${page === 0 ? 0.4 : 1};">← Prev</button>
-            <span style="color:#64748b;font-size:13px;">Page ${page + 1} of ${totalPages} (${alerts.length} total)</span>
-            <button onclick="thresholdPage(${page + 1})" ${page === totalPages - 1 ? 'disabled' : ''}
-              style="padding:6px 14px;background:#334155;border:none;border-radius:8px;color:#e2e8f0;cursor:pointer;opacity:${page === totalPages - 1 ? 0.4 : 1};">Next →</button>
-          </div>
-        `;
-      }
-
-      window.thresholdPage = function (page) {
-        if (page < 0 || page >= totalPages) return;
-        currentPage = page;
-        renderPage(currentPage);
-      };
-
-      renderPage(currentPage);
-    }
-
+    // Load Data Functions
     async function loadSummary() {
-      const res = await fetch(`${API}/stats/summary`);
-      const data = await res.json();
-      document.getElementById("total-requests").textContent = data.total_requests.toLocaleString();
-      document.getElementById("unique-ips").textContent = data.unique_ips.toLocaleString();
-      document.getElementById("errors").textContent = data.errors.toLocaleString();
+      try {
+        const data = await fetchJson("/stats/summary");
+        
+        // Render basic metrics
+        document.getElementById("total-requests").textContent = data.total_requests.toLocaleString();
+        document.getElementById("unique-ips").textContent = data.unique_ips.toLocaleString();
+        
+        // Calculate health metrics
+        const errorRate = data.total_requests > 0 ? (data.errors / data.total_requests * 100) : 0;
+        document.getElementById("error-rate").textContent = `${errorRate.toFixed(2)}%`;
+        
+        // Set error rate state coloring
+        if (errorRate >= 5) {
+          document.getElementById("error-rate").style.color = "var(--danger)";
+        } else if (errorRate >= 2) {
+          document.getElementById("error-rate").style.color = "var(--warning)";
+        } else {
+          document.getElementById("error-rate").style.color = "var(--success)";
+        }
+        
+        // Health Score computation
+        let healthVal = 100 - (errorRate * 4); // Scale error impact
+        healthVal = Math.max(10, Math.min(100, healthVal));
+        const healthScoreEl = document.getElementById("health-score");
+        healthScoreEl.textContent = `${Math.round(healthVal)}%`;
+        
+        const healthCardEl = healthScoreEl.closest(".card");
+        if (healthVal >= 95) {
+          healthScoreEl.style.color = "var(--success)";
+          healthCardEl.style.borderColor = "rgba(16, 185, 129, 0.15)";
+        } else if (healthVal >= 85) {
+          healthScoreEl.style.color = "var(--warning)";
+          healthCardEl.style.borderColor = "rgba(251, 191, 36, 0.15)";
+        } else {
+          healthScoreEl.style.color = "var(--danger)";
+          healthCardEl.style.borderColor = "rgba(248, 113, 113, 0.15)";
+        }
+      } catch (error) {
+        document.getElementById("total-requests").textContent = "ERR";
+        document.getElementById("unique-ips").textContent = "ERR";
+        document.getElementById("error-rate").textContent = "ERR";
+        document.getElementById("health-score").textContent = "ERR";
+      }
     }
 
-    async function loadTraffic(ip = "") {
-      const res = await fetch(`${API}/stats/traffic?granularity=hour&limit=500&ip=${encodeURIComponent(ip)}`);
-      const data = await res.json();
-      const labels = data.map(d => formatPeriod(d.period));
-      const counts = data.map(d => Number(d.count) || 0);
-      const compressedTicks = buildCompressedTicks(Math.max(...counts, 1));
-      const chartData = useTrafficLogScale ? compressedData(counts, compressedTicks) : counts;
+    async function loadThreatAndAnomalies() {
+      try {
+        const data = await fetchJson("/stats/anomalies");
+        rateSpikesData = data.high_frequency || [];
+        scannersData = data.many_404s || [];
+        errorsData = data.many_500s || [];
+        
+        renderAnomalyRatePage(0);
+        renderAnomalyScannerPage(0);
+        renderAnomalyErrorPage(0);
+      } catch (error) {
+        renderPanelError("anomaly-rate-list", error.message, "loadThreatAndAnomalies()");
+        renderPanelError("anomaly-scanner-list", error.message);
+        renderPanelError("anomaly-error-list", error.message);
+      }
+    }
 
-      if (trafficChart) {
-        trafficChart.data.labels = labels;
-        trafficChart.data.datasets[0].originalData = counts;
-        trafficChart.data.datasets[0].data = chartData;
-        trafficChart.options.scales.y = useTrafficLogScale
-          ? compressedAxisOptions(compressedTicks)
-          : { beginAtZero: true, ticks: { color: "#64748b" } };
-        trafficChart.update("none");
+    // 1. Rate Spikes Pagination
+    function renderAnomalyRatePage(page) {
+      const tbody = document.getElementById("anomaly-rate-list");
+      const pag = document.getElementById("rate-pagination");
+      const limit = 5;
+      const total = rateSpikesData.length;
+      const totalPages = Math.max(Math.ceil(total / limit), 1);
+      
+      if (total === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--success);padding:14px;">✓ No rate spike threats found</td></tr>`;
+        pag.innerHTML = "";
         return;
       }
+      
+      const start = page * limit;
+      const items = rateSpikesData.slice(start, start + limit);
+      tbody.innerHTML = items.map(d => `
+        <tr>
+          <td style="color:var(--primary); font-weight: 500;">${escapeHtml(d.ip)}</td>
+          <td style="color:var(--text-secondary); font-family: 'JetBrains Mono', monospace;">${formatPeriod(d.minute)}</td>
+          <td><span style="background: rgba(239, 68, 68, 0.08); color: var(--danger); padding: 2px 8px; border-radius: 4px; font-weight:600; font-family:'JetBrains Mono', monospace;">${d.count} req/min</span></td>
+          <td><span class="badge danger">CRITICAL</span></td>
+        </tr>
+      `).join("");
+      
+      pag.innerHTML = totalPages <= 1 ? "" : `
+        <button onclick="renderAnomalyRatePage(${page - 1})" ${page === 0 ? 'disabled' : ''} class="btn-secondary" style="padding:4px 10px; font-size:12px; opacity:${page === 0 ? 0.4 : 1};">← Prev</button>
+        <span style="color:var(--text-secondary);font-size:12px;">Page ${page + 1} of ${totalPages} (${total} total)</span>
+        <button onclick="renderAnomalyRatePage(${page + 1})" ${page >= totalPages - 1 ? 'disabled' : ''} class="btn-secondary" style="padding:4px 10px; font-size:12px; opacity:${page >= totalPages - 1 ? 0.4 : 1};">Next →</button>
+      `;
+    }
 
-      trafficChart = new Chart(document.getElementById("trafficChart"), {
-        type: "line",
-        plugins: [trafficHoverLinePlugin],
-        data: {
-          labels,
-          datasets: [{
-            label: "Requests",
-            originalData: counts,
-            data: chartData,
-            borderColor: "#38bdf8",
-            backgroundColor: "rgba(56,189,248,0.1)",
-            fill: true,
-            tension: 0.4,
-            pointRadius: 0,
-            pointHoverRadius: 5,
-            hitRadius: 12,
-            borderWidth: 2,
-          }]
-        },
-        options: {
-          animation: false,
-          interaction: { mode: "index", intersect: false, axis: "x" },
-          plugins: {
-            legend: { labels: { color: "#e2e8f0" } },
-            tooltip: {
-              intersect: false,
-              mode: "index",
-              callbacks: {
-                label: ctx => {
-                  const originalValue = ctx.dataset.originalData?.[ctx.dataIndex] ?? ctx.parsed.y;
-                  return ` ${ctx.dataset.label}: ${originalValue}`;
+    // 2. 404 Scanners Pagination
+    function renderAnomalyScannerPage(page) {
+      const tbody = document.getElementById("anomaly-scanner-list");
+      const pag = document.getElementById("scanner-pagination");
+      const limit = 5;
+      const total = scannersData.length;
+      const totalPages = Math.max(Math.ceil(total / limit), 1);
+      
+      if (total === 0) {
+        tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--success);padding:14px;">✓ No URL scanning patterns detected</td></tr>`;
+        pag.innerHTML = "";
+        return;
+      }
+      
+      const start = page * limit;
+      const items = scannersData.slice(start, start + limit);
+      tbody.innerHTML = items.map(d => `
+        <tr>
+          <td style="color:var(--primary); font-weight: 500;">${escapeHtml(d.ip)}</td>
+          <td><span style="background: rgba(251, 191, 36, 0.08); color: var(--warning); padding: 2px 8px; border-radius: 4px; font-weight:600; font-family:'JetBrains Mono', monospace;">${d.count} errors</span></td>
+          <td><span class="badge warning">WARNING</span></td>
+        </tr>
+      `).join("");
+      
+      pag.innerHTML = totalPages <= 1 ? "" : `
+        <button onclick="renderAnomalyScannerPage(${page - 1})" ${page === 0 ? 'disabled' : ''} class="btn-secondary" style="padding:4px 10px; font-size:12px; opacity:${page === 0 ? 0.4 : 1};">← Prev</button>
+        <span style="color:var(--text-secondary);font-size:12px;">Page ${page + 1} of ${totalPages} (${total} total)</span>
+        <button onclick="renderAnomalyScannerPage(${page + 1})" ${page >= totalPages - 1 ? 'disabled' : ''} class="btn-secondary" style="padding:4px 10px; font-size:12px; opacity:${page >= totalPages - 1 ? 0.4 : 1};">Next →</button>
+      `;
+    }
+
+    // 3. 500 Triggers Pagination
+    function renderAnomalyErrorPage(page) {
+      const tbody = document.getElementById("anomaly-error-list");
+      const pag = document.getElementById("error-pagination");
+      const limit = 5;
+      const total = errorsData.length;
+      const totalPages = Math.max(Math.ceil(total / limit), 1);
+      
+      if (total === 0) {
+        tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--success);padding:14px;">✓ No server error anomalies found</td></tr>`;
+        pag.innerHTML = "";
+        return;
+      }
+      
+      const start = page * limit;
+      const items = errorsData.slice(start, start + limit);
+      tbody.innerHTML = items.map(d => `
+        <tr>
+          <td style="color:var(--primary); font-weight: 500;">${escapeHtml(d.ip)}</td>
+          <td><span style="background: rgba(239, 68, 68, 0.08); color: var(--danger); padding: 2px 8px; border-radius: 4px; font-weight:600; font-family:'JetBrains Mono', monospace;">${d.count} triggers</span></td>
+          <td><span class="badge danger">CRITICAL</span></td>
+        </tr>
+      `).join("");
+      
+      pag.innerHTML = totalPages <= 1 ? "" : `
+        <button onclick="renderAnomalyErrorPage(${page - 1})" ${page === 0 ? 'disabled' : ''} class="btn-secondary" style="padding:4px 10px; font-size:12px; opacity:${page === 0 ? 0.4 : 1};">← Prev</button>
+        <span style="color:var(--text-secondary);font-size:12px;">Page ${page + 1} of ${totalPages} (${total} total)</span>
+        <button onclick="renderAnomalyErrorPage(${page + 1})" ${page >= totalPages - 1 ? 'disabled' : ''} class="btn-secondary" style="padding:4px 10px; font-size:12px; opacity:${page >= totalPages - 1 ? 0.4 : 1};">Next →</button>
+      `;
+    }
+
+    let trafficAbortController = null;
+    async function loadTraffic(ip = "") {
+      if (trafficAbortController) trafficAbortController.abort();
+      trafficAbortController = new AbortController();
+      const signal = trafficAbortController.signal;
+
+      const container = document.getElementById("traffic-chart-container");
+      if (container) container.style.opacity = "0.4";
+      try {
+        const limit = 48;
+        const chunkSize = 12;
+        let allLabels = [];
+        let allCounts = [];
+
+        if (!trafficChart) {
+          const ctx = document.getElementById("trafficChart").getContext("2d");
+          const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+          gradient.addColorStop(0, 'rgba(56, 189, 248, 0.25)');
+          gradient.addColorStop(1, 'rgba(56, 189, 248, 0.00)');
+
+          trafficChart = new Chart(ctx, {
+            type: "line",
+            plugins: [glowPlugin],
+            data: { labels: [], datasets: [{
+              label: "Requests", originalData: [], data: [],
+              borderColor: "#38bdf8", backgroundColor: gradient, fill: true,
+              tension: 0.4, pointRadius: 0, pointHoverRadius: 6,
+              pointHoverBackgroundColor: "#38bdf8", pointHoverBorderColor: "#fff",
+              pointHoverBorderWidth: 2, borderWidth: 3,
+            }]},
+            options: {
+              responsive: true, maintainAspectRatio: false,
+              interaction: { mode: "index", intersect: false },
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  backgroundColor: '#0f172a', titleColor: '#e2e8f0', bodyColor: '#38bdf8',
+                  borderColor: 'rgba(255, 255, 255, 0.1)', borderWidth: 1,
+                  callbacks: { label: ctx => ` Requests: ${ctx.dataset.originalData?.[ctx.dataIndex] ?? ctx.parsed.y}` }
                 }
+              },
+              scales: {
+                x: { ticks: { color: "#64748b", maxTicksLimit: 10 }, grid: { display: false } },
+                y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } }
               }
             }
-          },
-          scales: {
-            x: { ticks: { color: "#64748b", maxTicksLimit: 12 } },
-            y: useTrafficLogScale
-              ? compressedAxisOptions(compressedTicks)
-              : { beginAtZero: true, ticks: { color: "#64748b" } }
-          }
+          });
         }
-      });
+
+        trafficChart.data.labels = [];
+        trafficChart.data.datasets[0].originalData = [];
+        trafficChart.data.datasets[0].data = [];
+        trafficChart.update();
+
+        for (let offset = limit - chunkSize; offset > -chunkSize; offset -= chunkSize) {
+          const fetchLimit = offset < 0 ? chunkSize + offset : chunkSize;
+          const fetchOffset = Math.max(0, offset);
+          if (fetchLimit <= 0) break;
+
+          const data = await fetchJson(`/stats/traffic?granularity=hour&limit=${fetchLimit}&offset=${fetchOffset}&ip=${encodeURIComponent(ip)}`, { signal });
+          allLabels.push(...data.map(d => formatPeriod(d.period)));
+          allCounts.push(...data.map(d => Number(d.count) || 0));
+
+          const compressedTicks = buildCompressedTicks(Math.max(...allCounts, 1));
+          trafficChart.data.labels = allLabels;
+          trafficChart.data.datasets[0].originalData = allCounts;
+          trafficChart.data.datasets[0].data = useTrafficLogScale ? compressedData(allCounts, compressedTicks) : allCounts;
+          trafficChart.options.scales.y = useTrafficLogScale ? compressedAxisOptions(compressedTicks) : { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } };
+          trafficChart.update();
+        }
+      } catch (error) {
+        if (error.name !== 'AbortError') renderPanelError("traffic-chart-container", error.message, "loadTraffic()");
+      } finally {
+        if (container) container.style.opacity = "1";
+      }
     }
 
     function toggleTrafficScale() {
@@ -730,110 +1417,160 @@
       loadTraffic(document.getElementById("traffic-ip-search").value.trim());
     }
 
+    let statusAbortController = null;
+    async function loadStatusCodes(range = "hour") {
+      if (statusAbortController) statusAbortController.abort();
+      statusAbortController = new AbortController();
+      const signal = statusAbortController.signal;
+
+      const limit = numberInputValue("status-limit", 48, 5, 500);
+      document.getElementById("status-limit-unit").textContent = range === "minute" ? "minutes" : range === "day" ? "days" : "hours";
+      
+      const wrapper = document.getElementById("statusChartWrapper");
+      if (wrapper) wrapper.style.opacity = "0.4";
+      try {
+        const chunkSize = range === 'minute' ? 10 : range === 'hour' ? 12 : 5;
+        let allLabels = [];
+        let datasetsData = {};
+        const colors = ["#38bdf8", "#10b981", "#fbbf24", "#ef4444", "#a855f7", "#06b6d4", "#f97316", "#ec4899"];
+
+        if (statusChart) {
+          statusChart.destroy();
+          statusChart = null;
+        }
+
+        for (let offset = limit - chunkSize; offset > -chunkSize; offset -= chunkSize) {
+          const fetchLimit = offset < 0 ? chunkSize + offset : chunkSize;
+          const fetchOffset = Math.max(0, offset);
+          if (fetchLimit <= 0) break;
+
+          const data = await fetchJson(`/stats/status-codes-over-time?granularity=${range}&limit=${fetchLimit}&offset=${fetchOffset}`, { signal });
+          
+          allLabels.push(...data.labels.map(l => formatPeriod(l)));
+          data.datasets.forEach(ds => {
+            if (!datasetsData[ds.label]) datasetsData[ds.label] = { originalData: new Array(allLabels.length - data.labels.length).fill(0) };
+            datasetsData[ds.label].originalData.push(...ds.data.map(v => Number(v) || 0));
+          });
+          
+          Object.keys(datasetsData).forEach(lbl => {
+            if (!data.datasets.find(ds => ds.label === lbl)) datasetsData[lbl].originalData.push(...new Array(data.labels.length).fill(0));
+          });
+
+          const maxCount = Math.max(10, ...Object.values(datasetsData).flatMap(d => d.originalData));
+          const compressedTicks = buildCompressedTicks(maxCount);
+          const datasets = Object.keys(datasetsData).map((lbl, idx) => ({
+            label: `Status ${lbl}`,
+            originalData: datasetsData[lbl].originalData,
+            data: useStatusLogScale ? compressedData(datasetsData[lbl].originalData, compressedTicks) : datasetsData[lbl].originalData,
+            borderColor: colors[idx % colors.length],
+            tension: 0.4, pointRadius: 0, pointHoverRadius: 6, borderWidth: 3, spanGaps: true
+          }));
+
+          if (!statusChart) {
+            const canvas = document.getElementById("statusChart");
+            canvas.width = wrapper.offsetWidth;
+            canvas.height = wrapper.offsetHeight;
+            statusChart = new Chart(canvas, {
+              type: "line", plugins: [glowPlugin],
+              data: { labels: allLabels, datasets },
+              options: {
+                responsive: true, maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+                plugins: {
+                  legend: { position: 'top', labels: { boxWidth: 10, padding: 15 } },
+                  tooltip: { backgroundColor: '#0f172a', borderColor: 'rgba(255, 255, 255, 0.1)', borderWidth: 1, callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.dataset.originalData?.[ctx.dataIndex] ?? ctx.parsed.y}` } }
+                },
+                scales: {
+                  x: { ticks: { color: "#64748b", maxTicksLimit: 12 }, grid: { display: false } },
+                  y: useStatusLogScale ? compressedAxisOptions(compressedTicks) : { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } }
+                }
+              }
+            });
+          } else {
+            statusChart.data.labels = allLabels;
+            statusChart.data.datasets = datasets;
+            statusChart.options.scales.y = useStatusLogScale ? compressedAxisOptions(compressedTicks) : { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } };
+            statusChart.update();
+          }
+        }
+      } catch (error) {
+        if (error.name !== 'AbortError') renderPanelError("statusChartWrapper", error.message, `loadStatusCodes('${range}')`);
+      } finally {
+        if (wrapper) wrapper.style.opacity = "1";
+      }
+    }
+
     function toggleStatusScale() {
       useStatusLogScale = !useStatusLogScale;
       setToggleState("scale-toggle", useStatusLogScale);
-      loadStatusCodes(document.querySelector(".range-btn.active").dataset.range);
+      const activeBtn = document.querySelector(".range-btn.active");
+      loadStatusCodes(activeBtn ? activeBtn.dataset.range : "hour");
     }
 
-    function updateStatusLimitUnit(range) {
-      const units = { minute: "minutes", hour: "hours", day: "days" };
-      document.getElementById("status-limit-unit").textContent = units[range] || "items";
-    }
+    async function loadTopIPs() {
+      const container = document.getElementById("ip-chart-container");
+      if (container) container.style.opacity = "0.4";
+      try {
+        const data = await fetchJson("/stats/top-ips?limit=8");
+        const counts = data.map(d => d.count);
+        const labels = data.map(d => d.ip);
+        
+        const compressedTicks = buildCompressedTicks(Math.max(...counts, 1));
+        const chartData = useIpLogScale ? compressedData(counts, compressedTicks) : counts;
 
-    async function loadStatusCodes(range = "hour") {
-      updateStatusLimitUnit(range);
-      const thresholds = { minute: 10, hour: 100, day: 1200 };
-      const limit = numberInputValue("status-limit", 60, 1, 1440);
-      const res = await fetch(`${API}/stats/status-codes-over-time?granularity=${range}&limit=${limit}`);
-      const data = await res.json();
+        if (ipChart) {
+          ipChart.destroy();
+        }
 
-      const colors = ["#38bdf8","#22c55e","#fbbf24","#f87171","#c084fc","#14b8a6","#f97316","#e11d48"];
-      const labels = data.labels.map(l => formatPeriod(l));
-      const maxCount = Math.max(
-        thresholds[range],
-        ...data.datasets.flatMap(dataset => dataset.data)
-      );
+        const ctx = document.getElementById("ipChart").getContext("2d");
+        const gradient = ctx.createLinearGradient(0, 0, 300, 0);
+        gradient.addColorStop(0, '#38bdf8');
+        gradient.addColorStop(1, '#818cf8');
 
-      const compressedTicks = buildCompressedTicks(maxCount);
-      const datasets = data.datasets.map((dataset, index) => {
-        const originalData = dataset.data.map(value => Number(value) || 0);
-        return {
-          label: dataset.label,
-          originalData,
-          data: useStatusLogScale ? compressedData(originalData, compressedTicks) : originalData,
-          borderColor: colors[index % colors.length],
-          tension: 0.4,
-          pointRadius: 0,
-          pointHoverRadius: 8,
-          hitRadius: 10,
-          borderWidth: 2,
-          spanGaps: true,
-        };
-      });
-
-      datasets.push({
-        label: `Threshold (${thresholds[range]})`,
-        originalData: new Array(labels.length).fill(thresholds[range]),
-        data: new Array(labels.length).fill(
-          useStatusLogScale ? compressedValue(thresholds[range], compressedTicks) : thresholds[range]
-        ),
-        borderColor: "#ff4d4f",
-        borderDash: [8, 8],
-        borderWidth: 2,
-        pointRadius: 0,
-        tension: 0,
-      });
-
-      if (statusChart) {
-        statusChart.destroy();
-        statusChart = null;
-      }
-
-      const container = document.getElementById("statusChartContainer");
-      const width = Math.max(labels.length * 25, container.parentElement.offsetWidth);
-      container.style.width = width + "px";
-      container.style.height = "400px";
-
-      const oldCanvas = document.getElementById("statusChart");
-      const newCanvas = document.createElement("canvas");
-      newCanvas.id = "statusChart";
-      newCanvas.width = width;
-      newCanvas.height = 400;
-      oldCanvas.parentNode.replaceChild(newCanvas, oldCanvas);
-
-      statusChart = new Chart(newCanvas, {
-        type: "line",
-        data: { labels, datasets },
-        options: {
-          responsive: false,
-          animation: false,
-          interaction: { mode: "point", intersect: true },
-          plugins: {
-            legend: { labels: { color: "#e2e8f0" } },
-            tooltip: {
-              backgroundColor: "#1e293b",
-              titleColor: "#94a3b8",
-              bodyColor: "#e2e8f0",
-              borderColor: "#334155",
-              borderWidth: 1,
-              padding: 10,
-              callbacks: {
-                label: ctx => {
-                  const originalValue = ctx.dataset.originalData?.[ctx.dataIndex] ?? ctx.parsed.y;
-                  return ` ${ctx.dataset.label}: ${originalValue}`;
+        ipChart = new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels,
+            datasets: [{
+              label: "Requests",
+              originalData: counts,
+              data: chartData,
+              backgroundColor: gradient,
+              borderRadius: 6,
+              barThickness: 18
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: "y",
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: '#0f172a',
+                borderColor: 'rgba(255, 255, 255, 0.1)',
+                borderWidth: 1,
+                callbacks: {
+                  label: ctx => ` Requests: ${ctx.dataset.originalData?.[ctx.dataIndex] ?? ctx.parsed.x}`
                 }
               }
+            },
+            scales: {
+              x: useIpLogScale
+                ? compressedAxisOptions(compressedTicks)
+                : { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } },
+              y: { 
+                ticks: { color: "#9ca3af" },
+                grid: { display: false }
+              }
             }
-          },
-          scales: {
-            x: { ticks: { color: "#64748b", maxRotation: 45, minRotation: 45, autoSkip: false } },
-            y: useStatusLogScale
-              ? compressedAxisOptions(compressedTicks)
-              : { beginAtZero: true, ticks: { color: "#64748b" } }
           }
-        }
-      });
+        });
+      } catch (error) {
+        renderPanelError("ip-chart-container", error.message, "loadTopIPs()");
+      } finally {
+        const container = document.getElementById("ip-chart-container");
+        if (container) container.style.opacity = "1";
+      }
     }
 
     function toggleIpScale() {
@@ -842,115 +1579,44 @@
       loadTopIPs();
     }
 
-    async function loadTopIPs() {
-      const res = await fetch(`${API}/stats/top-ips?limit=10`);
-      const data = await res.json();
-      const counts = data.map(d => d.count);
-
-      if (ipChart) {
-        ipChart.destroy();
-      }
-
-      ipChart = new Chart(document.getElementById("ipChart"), {
-        type: "bar",
-        data: {
-          labels: data.map(d => d.ip),
-          datasets: [{
-            label: "Requests",
-            originalData: counts,
-            data: useIpLogScale ? compressedData(counts, buildCompressedTicks(Math.max(...counts, 1))) : counts,
-            backgroundColor: "#38bdf8"
-          }]
-        },
-        options: {
-          animation: false,
-          indexAxis: "y",
-          plugins: {
-            legend: { labels: { color: "#e2e8f0" } },
-            tooltip: {
-              callbacks: {
-                label: ctx => {
-                  const originalValue = ctx.dataset.originalData?.[ctx.dataIndex] ?? ctx.parsed.x;
-                  return ` ${ctx.dataset.label}: ${originalValue}`;
-                }
-              }
-            }
-          },
-          scales: {
-            x: useIpLogScale
-              ? compressedAxisOptions(buildCompressedTicks(Math.max(...counts, 1)))
-              : { beginAtZero: true, ticks: { color: "#64748b" } },
-            y: { ticks: { color: "#64748b" } }
-          }
-        }
-      });
-    }
-
-    async function loadErrorBreakdown() {
-      const res = await fetch(`${API}/stats/status-codes`);
-      const data = await res.json();
-      const errors = data.filter(d => d.status >= 400);
-      document.getElementById("error-table").innerHTML = errors.map(d => `
-        <tr>
-          <td style="padding:8px;color:#f87171;">${d.status}</td>
-          <td style="padding:8px;color:#e2e8f0;">${d.count.toLocaleString()}</td>
-        </tr>
-      `).join("");
-    }
-
-    async function loadAnomalies() {
-      const container = document.getElementById("anomaly-list");
-      if (!container) return;
-
-      const res = await fetch(`${API}/stats/anomalies`);
-      const data = await res.json();
-      const alerts = [];
-
-      data.high_frequency.forEach(d => alerts.push({
-        level: "red",
-        message: `IP <strong>${escapeHtml(d.ip)}</strong> sent <strong>${escapeHtml(d.count)}</strong> requests in 1 minute at ${formatPeriod(d.minute)}`
-      }));
-      data.many_404s.forEach(d => alerts.push({
-        level: "yellow",
-        message: `IP <strong>${escapeHtml(d.ip)}</strong> triggered <strong>${escapeHtml(d.count)}</strong> 404 errors`
-      }));
-      data.many_500s.forEach(d => alerts.push({
-        level: "red",
-        message: `IP <strong>${escapeHtml(d.ip)}</strong> caused <strong>${escapeHtml(d.count)}</strong> server errors (500)`
-      }));
-
-      if (alerts.length === 0) {
-        container.innerHTML = `<p style="color:#34d399;">✓ No anomalies detected</p>`;
-        return;
-      }
-
-      let pageSize = parseInt(document.getElementById("anomaly-page-size")?.value) || 5;
-      let currentPage = 0;
-      const totalPages = Math.ceil(alerts.length / pageSize);
-
-      function renderPage(page) {
-        const pageAlerts = alerts.slice(page * pageSize, page * pageSize + pageSize);
-        container.innerHTML = pageAlerts.map(a => `
-          <div style="padding:10px 16px;margin-bottom:8px;border-radius:8px;border-left:4px solid ${a.level === 'red' ? '#f87171' : '#fbbf24'};background:${a.level === 'red' ? 'rgba(248,113,113,0.1)' : 'rgba(251,191,36,0.1)'};color:#e2e8f0;font-size:14px;">${a.message}</div>
+    async function loadRightStats() {
+      // 1. Top Paths
+      try {
+        const pathsData = await fetchJson("/stats/top-urls?limit=8");
+        document.getElementById("top-paths-table").innerHTML = pathsData.map(d => `
+          <tr>
+            <td style="font-family: 'JetBrains Mono', monospace; font-size: 13px; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(d.path)}">
+              ${escapeHtml(d.path)}
+            </td>
+            <td><span style="font-weight:600; color: var(--primary);">${d.count.toLocaleString()}</span></td>
+          </tr>
         `).join("");
-        container.innerHTML += `
-          <div style="display:flex;align-items:center;gap:12px;margin-top:12px;">
-            <button onclick="anomalyPage(${page - 1})" ${page === 0 ? 'disabled' : ''}
-              style="padding:6px 14px;background:#334155;border:none;border-radius:8px;color:#e2e8f0;cursor:pointer;opacity:${page === 0 ? 0.4 : 1};">← Prev</button>
-            <span style="color:#64748b;font-size:13px;">Page ${page + 1} of ${totalPages} (${alerts.length} total)</span>
-            <button onclick="anomalyPage(${page + 1})" ${page === totalPages - 1 ? 'disabled' : ''}
-              style="padding:6px 14px;background:#334155;border:none;border-radius:8px;color:#e2e8f0;cursor:pointer;opacity:${page === totalPages - 1 ? 0.4 : 1};">Next →</button>
-          </div>
-        `;
+      } catch (e) {
+        renderPanelError("top-paths-table", e.message);
       }
 
-      window.anomalyPage = function (page) {
-        if (page < 0 || page >= totalPages) return;
-        currentPage = page;
-        renderPage(currentPage);
-      };
-
-      renderPage(currentPage);
+      // 2. Error Breakdown codes
+      try {
+        const codesData = await fetchJson("/stats/status-codes");
+        const errors = codesData.filter(d => d.status >= 400);
+        
+        if (errors.length === 0) {
+          document.getElementById("error-codes-table").innerHTML = `<tr><td colspan="2" style="text-align:center; color: var(--success); padding: 14px;">No errors registered</td></tr>`;
+          return;
+        }
+        
+        document.getElementById("error-codes-table").innerHTML = errors.map(d => {
+          const col = d.status >= 500 ? 'var(--danger)' : 'var(--warning)';
+          return `
+            <tr>
+              <td><span style="color: ${col}; font-weight: 600;">${d.status}</span></td>
+              <td><span style="font-weight:600; color: var(--text-primary);">${d.count.toLocaleString()}</span></td>
+            </tr>
+          `;
+        }).join("");
+      } catch (e) {
+        renderPanelError("error-codes-table", e.message);
+      }
     }
 
     async function runSearch(page = 0) {
@@ -959,11 +1625,11 @@
       const status = document.getElementById("search-status").value;
       const from = searchDateParam("search-from");
       const to = searchDateParam("search-to");
-      const pageSize = numberInputValue("search-page-size", 25, 1, 1000);
+      const pageSize = numberInputValue("search-page-size", 15, 1, 500);
 
       if (from === null || to === null) {
         document.getElementById("search-results").innerHTML = "";
-        document.getElementById("search-count").textContent = "Use date format dd/mm/yyyy hh:mm:ss.";
+        document.getElementById("search-count").textContent = "Invalid date format. Use dd/mm/yyyy hh:mm.";
         document.getElementById("search-pagination").innerHTML = "";
         return;
       }
@@ -978,67 +1644,92 @@
       if (from) params.set("time_from", from);
       if (to) params.set("time_to", to);
 
-      const res = await fetch(`${API}/stats/search?${params.toString()}`);
-      const payload = await res.json();
-      const data = payload.rows || [];
-      const total = payload.total || 0;
-      const totalPages = Math.max(Math.ceil(total / pageSize), 1);
-      const statusColor = s => s >= 500 ? "#f87171" : s >= 400 ? "#fbbf24" : "#34d399";
+      try {
+        document.getElementById("search-results").innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);">Searching...</td></tr>`;
+        const payload = await fetchJson(`/stats/search?${params.toString()}`);
+        const data = payload.rows || [];
+        const total = payload.total || 0;
+        const totalPages = Math.max(Math.ceil(total / pageSize), 1);
+        const statusColor = s => s >= 500 ? "var(--danger)" : s >= 400 ? "var(--warning)" : "var(--success)";
 
-      document.getElementById("search-results").innerHTML = data.map(r => `
-        <tr style="border-bottom:1px solid #1e293b;">
-          <td style="padding:8px;color:#38bdf8;">${escapeHtml(r.ip)}</td>
-          <td style="padding:8px;color:#64748b;">${formatDateTime(r.time)}</td>
-          <td style="padding:8px;color:#94a3b8;">${escapeHtml(r.method)}</td>
-          <td style="padding:8px;color:#e2e8f0;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.path)}</td>
-          <td style="padding:8px;color:${statusColor(r.status)};">${escapeHtml(r.status)}</td>
-          <td style="padding:8px;color:#64748b;">${escapeHtml(r.size)}</td>
-        </tr>
-      `).join("");
-      const start = total === 0 ? 0 : (page * pageSize) + 1;
-      const end = Math.min((page + 1) * pageSize, total);
-      document.getElementById("search-count").textContent = total === 0
-        ? "No matching logs found."
-        : `Showing ${start}-${end} of ${total} results`;
-      document.getElementById("search-pagination").innerHTML = totalPages <= 1 ? "" : `
-        <button onclick="runSearch(${page - 1})" ${page === 0 ? "disabled" : ""}
-          style="padding:6px 14px;background:#334155;border:none;border-radius:8px;color:#e2e8f0;cursor:pointer;opacity:${page === 0 ? 0.4 : 1};">Prev</button>
-        <span style="color:#64748b;font-size:13px;">Page ${page + 1} of ${totalPages}</span>
-        <button onclick="runSearch(${page + 1})" ${page >= totalPages - 1 ? "disabled" : ""}
-          style="padding:6px 14px;background:#334155;border:none;border-radius:8px;color:#e2e8f0;cursor:pointer;opacity:${page >= totalPages - 1 ? 0.4 : 1};">Next</button>
-      `;
+        if (data.length === 0) {
+          document.getElementById("search-results").innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);padding: 20px;">No matching records found</td></tr>`;
+          document.getElementById("search-count").textContent = "No results.";
+          document.getElementById("search-pagination").innerHTML = "";
+          return;
+        }
+
+        document.getElementById("search-results").innerHTML = data.map(r => `
+          <tr>
+            <td style="color:var(--primary); font-weight: 500;">${escapeHtml(r.ip)}</td>
+            <td style="color:var(--text-secondary); font-family: 'JetBrains Mono', monospace; font-size:12px;">${formatDateTime(r.time)}</td>
+            <td style="font-weight: 600; font-size: 13px;">${escapeHtml(r.method)}</td>
+            <td style="font-family: 'JetBrains Mono', monospace; font-size:13px; max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(r.path)}">${escapeHtml(r.path)}</td>
+            <td><span style="color:${statusColor(r.status)}; font-weight: 700;">${escapeHtml(r.status)}</span></td>
+            <td style="color:var(--text-secondary); font-family: 'JetBrains Mono', monospace; font-size:12px;">${r.size !== null ? r.size.toLocaleString() : '-'}</td>
+          </tr>
+        `).join("");
+
+        const startIdx = (page * pageSize) + 1;
+        const endIdx = Math.min((page + 1) * pageSize, total);
+        document.getElementById("search-count").textContent = `Showing ${startIdx.toLocaleString()}-${endIdx.toLocaleString()} of ${total.toLocaleString()} results`;
+        
+        document.getElementById("search-pagination").innerHTML = totalPages <= 1 ? "" : `
+          <button onclick="runSearch(${page - 1})" ${page === 0 ? "disabled" : ""} class="btn-secondary" style="padding: 6px 12px; font-size: 13px; opacity:${page === 0 ? 0.4 : 1};">Prev</button>
+          <span style="color:var(--text-secondary); font-size: 13px;">Page ${page + 1} of ${totalPages}</span>
+          <button onclick="runSearch(${page + 1})" ${page >= totalPages - 1 ? "disabled" : ""} class="btn-secondary" style="padding: 6px 12px; font-size: 13px; opacity:${page >= totalPages - 1 ? 0.4 : 1};">Next</button>
+        `;
+      } catch (error) {
+        renderPanelError("search-results", error.message);
+        document.getElementById("search-count").textContent = "";
+        document.getElementById("search-pagination").innerHTML = "";
+      }
     }
 
     function clearSearchField(id) {
-      document.getElementById(id).value = "";
+      const el = document.getElementById(id);
+      if (el) {
+        el.value = "";
+        if (id === 'search-status') el.selectedIndex = 0;
+      }
     }
 
     function clearSearch() {
-      document.getElementById("search-ip").value = "";
-      document.getElementById("search-url").value = "";
-      document.getElementById("search-status").value = "";
-      document.getElementById("search-from").value = "";
-      document.getElementById("search-to").value = "";
-      document.getElementById("search-results").innerHTML = "";
+      clearSearchField("search-ip");
+      clearSearchField("search-url");
+      clearSearchField("search-status");
+      clearSearchField("search-from");
+      clearSearchField("search-to");
+      document.getElementById("search-results").innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);">Enter search criteria or click search to browse all logs.</td></tr>`;
       document.getElementById("search-count").textContent = "";
       document.getElementById("search-pagination").innerHTML = "";
     }
 
     async function loadSystemLogs() {
-      const res = await fetch(`${API}/stats/logs`);
-      const data = await res.json();
       const container = document.getElementById("system-logs");
-      const colorLine = line => {
-        const safeLine = escapeHtml(line);
-        if (line.includes("[ERROR]")) return `<span style="color:#f87171;">${safeLine}</span>`;
-        if (line.includes("[WARNING]")) return `<span style="color:#fbbf24;">${safeLine}</span>`;
-        if (line.includes("[INFO]")) return `<span style="color:#34d399;">${safeLine}</span>`;
-        return `<span style="color:#64748b;">${safeLine}</span>`;
-      };
-      container.innerHTML = data.lines.map(l => colorLine(l.trimEnd())).join("<br>");
-      container.scrollTop = container.scrollHeight;
+      try {
+        const data = await fetchJson("/stats/logs");
+        
+        if (!data.lines || data.lines.length === 0) {
+          container.innerHTML = `<div class="terminal-row" style="color:var(--text-secondary);">No logs registered in system database.</div>`;
+          return;
+        }
+
+        const colorLine = line => {
+          const safeLine = escapeHtml(line);
+          if (line.includes("[ERROR]")) return `<div class="terminal-row" style="color:#f87171;">${safeLine}</div>`;
+          if (line.includes("[WARNING]")) return `<div class="terminal-row" style="color:#fbbf24;">${safeLine}</div>`;
+          if (line.includes("[INFO]")) return `<div class="terminal-row" style="color:#34d399;">${safeLine}</div>`;
+          return `<div class="terminal-row" style="color:#64748b;">${safeLine}</div>`;
+        };
+        container.innerHTML = data.lines.map(l => colorLine(l.trimEnd())).join("");
+        container.scrollTop = container.scrollHeight;
+      } catch (error) {
+        renderPanelError("system-logs", error.message, "loadSystemLogs()");
+      }
     }
 
+    // Set up listeners
     document.querySelectorAll(".range-btn").forEach(btn => {
       btn.addEventListener("click", () => {
         document.querySelectorAll(".range-btn").forEach(b => b.classList.remove("active"));
@@ -1047,34 +1738,36 @@
       });
     });
 
-    document.getElementById("traffic-ip-search").addEventListener("input", async function () {
+    document.getElementById("traffic-ip-search").addEventListener("input", function () {
       const ip = this.value.trim();
-      if (ip === "" || /^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) loadTraffic(ip);
+      if (ip === "" || /^\d{1,3}(\.\d{1,3}){0,3}$/.test(ip)) {
+        loadTraffic(ip);
+      }
     });
 
     document.getElementById("status-limit").addEventListener("change", () => {
-      loadStatusCodes(document.querySelector(".range-btn.active").dataset.range);
+      const activeBtn = document.querySelector(".range-btn.active");
+      loadStatusCodes(activeBtn ? activeBtn.dataset.range : "hour");
     });
 
     document.getElementById("search-page-size").addEventListener("change", () => {
-      runSearch();
+      runSearch(0);
     });
 
-    document.getElementById("threshold-page-size").addEventListener("change", () => {
-      loadThresholdIPs();
-    });
+    // Initial load
+    async function initDashboard() {
+      await loadSummary();
+      loadThreatAndAnomalies();
+      loadTopIPs();
+      loadTraffic();
+      loadStatusCodes("hour");
+      loadRightStats();
+      loadSystemLogs();
+      runSearch(0);
+    }
 
-    Promise.all([
-      loadSummary(),
-      loadErrorBreakdown(),
-      loadTopIPs(),
-      loadTraffic(),
-      loadStatusCodes("hour"),
-      loadThresholdIPs(),
-      loadSystemLogs(),
-    ]);
+    window.onload = initDashboard;
   </script>
-
 </body>
 
 </html>
