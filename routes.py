@@ -160,6 +160,21 @@ async def search_logs(
         raise HTTPException(status_code=400, detail="Invalid datetime format") from exc
 
 
+@app.get("/stats/search/count")
+async def search_logs_count(
+    ip: str = None,
+    path: str = None,
+    status: int = None,
+    time_from: str = None,
+    time_to: str = None,
+):
+    try:
+        count = await stats_service.search_logs_count(ip, path, status, time_from, time_to)
+        return {"total": count}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid datetime format") from exc
+
+
 @app.get("/stats/status-codes-over-time")
 async def get_status_codes_over_time(
     granularity: str = "hour",

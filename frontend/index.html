@@ -1766,8 +1766,6 @@
         document.getElementById("search-results").innerHTML = skeletonRow.repeat(6);
         const payload = await fetchJson(`/stats/search?${params.toString()}`);
         const data = payload.rows || [];
-        const total = payload.total || 0;
-        const totalPages = Math.max(Math.ceil(total / pageSize), 1);
         const statusColor = s => s >= 500 ? "var(--danger)" : s >= 400 ? "var(--warning)" : "var(--success)";
 
         if (data.length === 0) {
@@ -1789,14 +1787,50 @@
         `).join("");
 
         const startIdx = (page * pageSize) + 1;
-        const endIdx = Math.min((page + 1) * pageSize, total);
-        document.getElementById("search-count").textContent = `Showing ${startIdx.toLocaleString()}-${endIdx.toLocaleString()} of ${total.toLocaleString()} results`;
-        
-        document.getElementById("search-pagination").innerHTML = totalPages <= 1 ? "" : `
-          <button onclick="runSearch(${page - 1})" ${page === 0 ? "disabled" : ""} class="btn-secondary" style="padding: 6px 12px; font-size: 13px; opacity:${page === 0 ? 0.4 : 1};">Prev</button>
-          <span style="color:var(--text-secondary); font-size: 13px;">Page ${page + 1} of ${totalPages}</span>
-          <button onclick="runSearch(${page + 1})" ${page >= totalPages - 1 ? "disabled" : ""} class="btn-secondary" style="padding: 6px 12px; font-size: 13px; opacity:${page >= totalPages - 1 ? 0.4 : 1};">Next</button>
-        `;
+
+        if (payload.total === null) {
+          // Filtered query: count is loading asynchronously
+          document.getElementById("search-count").textContent = `Showing ${startIdx.toLocaleString()}-${(startIdx + data.length - 1).toLocaleString()} of counting...`;
+          document.getElementById("search-pagination").innerHTML = `<span style="color:var(--text-secondary); font-size: 13px; opacity: 0.7;">Loading pages...</span>`;
+
+          const countParams = new URLSearchParams();
+          if (ip) countParams.set("ip", ip);
+          if (path) countParams.set("path", path);
+          if (status) countParams.set("status", status);
+          if (from) countParams.set("time_from", from);
+          if (to) countParams.set("time_to", to);
+
+          fetchJson(`/stats/search/count?${countParams.toString()}`)
+            .then(countPayload => {
+              const totalCount = countPayload.total || 0;
+              const totalPages = Math.max(Math.ceil(totalCount / pageSize), 1);
+              const endIdx = Math.min((page + 1) * pageSize, totalCount);
+              document.getElementById("search-count").textContent = `Showing ${startIdx.toLocaleString()}-${endIdx.toLocaleString()} of ${totalCount.toLocaleString()} results`;
+              
+              document.getElementById("search-pagination").innerHTML = totalPages <= 1 ? "" : `
+                <button onclick="runSearch(${page - 1})" ${page === 0 ? "disabled" : ""} class="btn-secondary" style="padding: 6px 12px; font-size: 13px; opacity:${page === 0 ? 0.4 : 1};">Prev</button>
+                <span style="color:var(--text-secondary); font-size: 13px;">Page ${page + 1} of ${totalPages}</span>
+                <button onclick="runSearch(${page + 1})" ${page >= totalPages - 1 ? "disabled" : ""} class="btn-secondary" style="padding: 6px 12px; font-size: 13px; opacity:${page >= totalPages - 1 ? 0.4 : 1};">Next</button>
+              `;
+            })
+            .catch(err => {
+              console.error("Failed to fetch search count:", err);
+              document.getElementById("search-count").textContent = `Showing ${startIdx.toLocaleString()}-${(startIdx + data.length - 1).toLocaleString()} results (count failed)`;
+              document.getElementById("search-pagination").innerHTML = "";
+            });
+        } else {
+          // Unfiltered query: total count already returned by estimate
+          const total = payload.total || 0;
+          const totalPages = Math.max(Math.ceil(total / pageSize), 1);
+          const endIdx = Math.min((page + 1) * pageSize, total);
+          document.getElementById("search-count").textContent = `Showing ${startIdx.toLocaleString()}-${endIdx.toLocaleString()} of ${total.toLocaleString()} results`;
+          
+          document.getElementById("search-pagination").innerHTML = totalPages <= 1 ? "" : `
+            <button onclick="runSearch(${page - 1})" ${page === 0 ? "disabled" : ""} class="btn-secondary" style="padding: 6px 12px; font-size: 13px; opacity:${page === 0 ? 0.4 : 1};">Prev</button>
+            <span style="color:var(--text-secondary); font-size: 13px;">Page ${page + 1} of ${totalPages}</span>
+            <button onclick="runSearch(${page + 1})" ${page >= totalPages - 1 ? "disabled" : ""} class="btn-secondary" style="padding: 6px 12px; font-size: 13px; opacity:${page >= totalPages - 1 ? 0.4 : 1};">Next</button>
+          `;
+        }
       } catch (error) {
         renderPanelError("search-results", error.message);
         document.getElementById("search-count").textContent = "";

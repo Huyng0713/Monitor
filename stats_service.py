@@ -678,6 +678,7 @@ class StatsService:
                 WITH paginated_rows AS (
                     SELECT ip, time, method, path, status, size
                     FROM logs
+                    ORDER BY time DESC
                     LIMIT :limit OFFSET :offset
                 ),
                 estimated_count AS (
@@ -723,40 +724,19 @@ class StatsService:
 
             where_sql = " AND ".join(where_clauses) or "1=1"
 
-            # Filtered query using a single roundtrip with key lookup to avoid Seq Scan on logs
+            # Filtered query - retrieves only the requested page of rows, ordered by time DESC.
+            # No COUNT(*) calculated here, ensuring it runs instantly.
             query = f"""
-                WITH filtered_ids AS NOT MATERIALIZED (
-                    SELECT id 
-                    FROM logs 
-                    WHERE {where_sql}
-                ),
-                total_count AS (
-                    SELECT COUNT(*) AS total FROM filtered_ids
-                ),
-                paginated_ids AS (
-                    SELECT id 
-                    FROM filtered_ids
-                    LIMIT :limit OFFSET :offset
-                )
-                SELECT 
-                    (SELECT total FROM total_count) AS total_count,
-                    (
-                        SELECT coalesce(json_agg(r), '[]'::json) 
-                        FROM (
-                            SELECT l.ip, l.time, l.method, l.path, l.status, l.size
-                            FROM paginated_ids p
-                            JOIN logs l ON l.id = p.id
-                        ) r
-                    ) AS rows
+                SELECT ip, time, method, path, status, size
+                FROM logs
+                WHERE {where_sql}
+                ORDER BY time DESC
+                LIMIT :limit OFFSET :offset
             """
             async with self.connection_factory() as session:
                 result = await session.execute(text(query), params)
-                row = result.mappings().one()
-                total = row["total_count"]
-                rows = row["rows"]
-                if isinstance(rows, str):
-                    import json
-                    rows = json.loads(rows)
+                rows = result.mappings().all()
+                total = None  # Frontend will request count asynchronously
 
         return {
             "rows": [
@@ -772,6 +752,47 @@ class StatsService:
             ],
             "total": total,
         }
+
+    async def search_logs_count(self, ip, path, status, time_from, time_to):
+        is_unfiltered = not ip and not path and status is None and not time_from and not time_to
+        if is_unfiltered:
+            query = """
+                SELECT CASE 
+                    WHEN reltuples::bigint <= 0 THEN (SELECT COUNT(*) FROM logs)
+                    ELSE reltuples::bigint
+                END AS total
+                FROM pg_class
+                WHERE relname = 'logs'
+            """
+            async with self.connection_factory() as session:
+                result = await session.execute(text(query))
+                return result.scalar() or 0
+
+        params = {}
+        where_clauses = []
+        if ip:
+            where_clauses.append("ip LIKE :ip")
+            params["ip"] = f"{ip}%"
+        if path:
+            where_clauses.append("path LIKE :path")
+            params["path"] = f"%{path}%"
+        if status is not None:
+            where_clauses.append("status = :status")
+            params["status"] = status
+        
+        if time_from:
+            where_clauses.append("time >= :time_from")
+            params["time_from"] = self._parse_datetime(time_from)
+        if time_to:
+            where_clauses.append("time <= :time_to")
+            params["time_to"] = self._parse_datetime(time_to)
+
+        where_sql = " AND ".join(where_clauses) or "1=1"
+        query = f"SELECT COUNT(*) FROM logs WHERE {where_sql}"
+        
+        async with self.connection_factory() as session:
+            result = await session.execute(text(query), params)
+            return result.scalar() or 0
 
     def _period_expr(self, granularity: str, table_alias: str | None = None) -> str:
         unit = DATE_TRUNC_UNITS[granularity]
