@@ -177,6 +177,8 @@ async def get_system_logs(
     if reset:
         try:
             await stats_service.clear_system_logs()
+            # After truncation, immediately return empty — no need for an extra DB read roundtrip
+            return {"lines": ["System logs cleared."]}
         except Exception:
             log_exception("Failed to clear system logs on request")
     try:

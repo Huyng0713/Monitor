@@ -57,11 +57,11 @@ class LogRecord(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    ip: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    ip: Mapped[str] = mapped_column(String, nullable=False)
     time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     method: Mapped[str | None] = mapped_column(String, nullable=True)
     path: Mapped[str | None] = mapped_column(String, nullable=True)
-    status: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    status: Mapped[int | None] = mapped_column(Integer, nullable=True)
     size: Mapped[int | None] = mapped_column(Integer, nullable=True)
     referer: Mapped[str | None] = mapped_column(String, nullable=True)
     user_agent: Mapped[str | None] = mapped_column(String, nullable=True)

@@ -125,6 +125,10 @@ class StatsService:
                 from log import log_exception
                 log_exception(f"Failed to write cached_stat {key} to DB")
 
+            # Pre-cache popular granularity variants after cold-start dashboard compute
+            if key == "dashboard":
+                asyncio.create_task(self._precompute_granularities())
+
             return result
 
     async def _refresh_stat_in_db(self, key, fetch_fn):
@@ -145,14 +149,56 @@ class StatsService:
                         ON CONFLICT (key) DO UPDATE 
                         SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at
                     """), {"key": key, "value": serialized})
+            # Pre-cache popular granularity variants when dashboard is refreshed
+            if key == "dashboard":
+                asyncio.create_task(self._precompute_granularities())
         except Exception:
             from log import log_exception
             log_exception(f"Failed to refresh cached_stat {key} in background")
 
+    async def _precompute_granularities(self):
+        """Pre-compute and cache day/minute/hour granularity data and default search so switching is instant."""
+        import json
+        from db import write_connection
+
+        async def _store(cache_key, result):
+            self._cache[cache_key] = (result, time.time())
+            serialized = json.dumps(result)
+            async with write_connection() as session:
+                await session.execute(text("""
+                    INSERT INTO cached_stats (key, value, updated_at)
+                    VALUES (:key, :value, NOW())
+                    ON CONFLICT (key) DO UPDATE
+                    SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at
+                """), {"key": cache_key, "value": serialized})
+
+        try:
+            for gran in ["hour", "day", "minute"]:
+                # Status codes over time
+                key = f"status_over_time:{gran}:48:0"
+                if key not in self._cache:
+                    result = await self._fetch_status_codes_over_time(gran, 48, 0)
+                    await _store(key, result)
+
+                # Traffic
+                key = f"traffic:{gran}::48:0"
+                if key not in self._cache:
+                    result = await self._fetch_traffic(gran, None, 48, 0)
+                    await _store(key, result)
+
+            # Default search
+            search_key = "search:default:15"
+            if search_key not in self._cache:
+                result = await self._search_logs_raw(None, None, None, None, None, 15, 0)
+                await _store(search_key, result)
+        except Exception:
+            from log import log_exception
+            log_exception("Failed to precompute granularity caches")
+
     async def clear_system_logs(self):
         from db import write_connection
         async with write_connection() as session:
-            await session.execute(text("DELETE FROM system_logs"))
+            await session.execute(text("TRUNCATE system_logs"))
 
     async def fetch_scalar(self, query: str, params: dict | None = None, session = None) -> int:
         if session:
@@ -613,10 +659,17 @@ class StatsService:
     async def search_logs(self, ip, path, status, time_from, time_to, limit, offset=0):
         is_unfiltered = not ip and not path and status is None and not time_from and not time_to
 
-        if not time_from and not time_to:
-            from datetime import datetime, timedelta, timezone
-            time_from = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-            
+        # Cache the default unfiltered page-0 search result
+        if is_unfiltered and offset == 0:
+            return await self.db_cached(
+                f"search:default:{limit}",
+                lambda: self._search_logs_raw(ip, path, status, time_from, time_to, limit, offset),
+            )
+        return await self._search_logs_raw(ip, path, status, time_from, time_to, limit, offset)
+
+    async def _search_logs_raw(self, ip, path, status, time_from, time_to, limit, offset=0):
+        is_unfiltered = not ip and not path and status is None and not time_from and not time_to
+
         params: dict[str, object] = {"limit": limit, "offset": offset}
         
         if is_unfiltered:

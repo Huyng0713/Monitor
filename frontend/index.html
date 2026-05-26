@@ -1878,10 +1878,9 @@
       // 1. First load the dashboard widgets (all 7 main components) in a single request
       await loadDashboard();
       
-      // 2. Once dashboard is fully populated, asynchronously load system logs and run default search
-      // This deferral prevents connection limit errors and keeps the initial paint instant
-      loadSystemLogs(true);
-      runSearch(0);
+      // 2. Load system logs first, then search — sequential to avoid connection pool contention
+      await loadSystemLogs(true);
+      await runSearch(0);
     }
 
     window.onload = initDashboard;
