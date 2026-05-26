@@ -84,12 +84,10 @@ class StatsService:
         return await self._cached("summary", self._fetch_summary)
 
     async def _fetch_summary(self):
-        import asyncio
-        total_reqs, errors, unique_ips = await asyncio.gather(
-            self.fetch_scalar("SELECT COUNT(*) FROM logs"),
-            self.fetch_scalar("SELECT COUNT(*) FROM logs WHERE status >= 400"),
-            self.fetch_scalar("SELECT COUNT(DISTINCT ip) FROM logs")
-        )
+        async with self.connection_factory() as session:
+            total_reqs = await self.fetch_scalar("SELECT COUNT(*) FROM logs", session=session)
+            errors = await self.fetch_scalar("SELECT COUNT(*) FROM logs WHERE status >= 400", session=session)
+            unique_ips = await self.fetch_scalar("SELECT COUNT(DISTINCT ip) FROM logs", session=session)
         return {
             "total_requests": total_reqs,
             "unique_ips": unique_ips,
@@ -311,16 +309,15 @@ class StatsService:
 
         where_sql = " AND ".join(where_clauses) or "1=1"
         count_params = {key: value for key, value in params.items() if key not in {"limit", "offset"}}
-        total, rows = await asyncio.gather(
-            self.fetch_scalar(f"SELECT COUNT(*) FROM logs WHERE {where_sql}", count_params),
-            self.fetch_rows(f"""
+        async with self.connection_factory() as session:
+            total = await self.fetch_scalar(f"SELECT COUNT(*) FROM logs WHERE {where_sql}", count_params, session=session)
+            rows = await self.fetch_rows(f"""
                 SELECT ip, time, method, path, status, size
                 FROM logs
                 WHERE {where_sql}
                 ORDER BY time DESC
                 LIMIT :limit OFFSET :offset
-            """, params),
-        )
+            """, params, session=session)
         return {
             "rows": [
                 {
