@@ -56,6 +56,104 @@ class StatsService:
             self._cache[key] = (result, now)
             return result
 
+    async def db_cached(self, key, fetch_fn, ttl=120, force_refresh=False):
+        now = time.time()
+        cached_in_mem = self._cache.get(key)
+        if cached_in_mem and not force_refresh:
+            value, ts = cached_in_mem
+            if now - ts < ttl:
+                return value
+
+        import json
+        from datetime import datetime, timezone
+        from db import write_connection
+
+        db_val = None
+        db_updated_at = None
+
+        try:
+            async with self.connection_factory() as session:
+                row = await self.fetch_rows("SELECT value, updated_at FROM cached_stats WHERE key = :key", {"key": key}, session=session)
+                if row:
+                    db_val = row[0]["value"]
+                    db_updated_at = row[0]["updated_at"]
+        except Exception:
+            from log import log_exception
+            log_exception("Failed to read from cached_stats table")
+
+        if db_updated_at:
+            if db_updated_at.tzinfo is None:
+                db_updated_at = db_updated_at.replace(tzinfo=timezone.utc)
+            db_age = (datetime.now(timezone.utc) - db_updated_at).total_seconds()
+        else:
+            db_age = 9999999
+
+        if db_val is not None and db_age < ttl and not force_refresh:
+            parsed_val = json.loads(db_val)
+            self._cache[key] = (parsed_val, now)
+            return parsed_val
+
+        # Stale-While-Revalidate: return stale value if age is under 10 minutes and refresh in background
+        if db_val is not None and db_age < 600 and not force_refresh:
+            parsed_val = json.loads(db_val)
+            self._cache[key] = (parsed_val, now)
+            asyncio.create_task(self._refresh_stat_in_db(key, fetch_fn))
+            return parsed_val
+
+        # Cold start/hard refresh: compute synchronously
+        lock = self._locks.setdefault(key, asyncio.Lock())
+        async with lock:
+            cached_in_mem = self._cache.get(key)
+            if cached_in_mem and not force_refresh:
+                value, ts = cached_in_mem
+                if now - ts < ttl:
+                    return value
+
+            result = await fetch_fn()
+            self._cache[key] = (result, time.time())
+
+            try:
+                serialized = json.dumps(result)
+                async with write_connection() as session:
+                    await session.execute(text("""
+                        INSERT INTO cached_stats (key, value, updated_at)
+                        VALUES (:key, :value, NOW())
+                        ON CONFLICT (key) DO UPDATE 
+                        SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at
+                    """), {"key": key, "value": serialized})
+            except Exception:
+                from log import log_exception
+                log_exception(f"Failed to write cached_stat {key} to DB")
+
+            return result
+
+    async def _refresh_stat_in_db(self, key, fetch_fn):
+        import json
+        from db import write_connection
+        try:
+            lock = self._locks.setdefault(key, asyncio.Lock())
+            if lock.locked():
+                return
+            async with lock:
+                result = await fetch_fn()
+                self._cache[key] = (result, time.time())
+                serialized = json.dumps(result)
+                async with write_connection() as session:
+                    await session.execute(text("""
+                        INSERT INTO cached_stats (key, value, updated_at)
+                        VALUES (:key, :value, NOW())
+                        ON CONFLICT (key) DO UPDATE 
+                        SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at
+                    """), {"key": key, "value": serialized})
+        except Exception:
+            from log import log_exception
+            log_exception(f"Failed to refresh cached_stat {key} in background")
+
+    async def clear_system_logs(self):
+        from db import write_connection
+        async with write_connection() as session:
+            await session.execute(text("DELETE FROM system_logs"))
+
     async def fetch_scalar(self, query: str, params: dict | None = None, session = None) -> int:
         if session:
             result = await session.execute(text(query), params or {})
@@ -92,7 +190,7 @@ class StatsService:
         return max_time
 
     async def get_summary(self):
-        return await self._cached("summary", self._fetch_summary)
+        return await self.db_cached("summary", self._fetch_summary)
 
     async def _fetch_summary(self):
         async def get_total():
@@ -113,7 +211,7 @@ class StatsService:
         }
 
     async def get_top_ips(self, limit: int):
-        return await self._cached(f"top_ips:{limit}", lambda: self._fetch_top_ips(limit))
+        return await self.db_cached(f"top_ips:{limit}", lambda: self._fetch_top_ips(limit))
 
     async def _fetch_top_ips(self, limit: int):
         rows = await self.fetch_rows("""
@@ -123,7 +221,7 @@ class StatsService:
         return [{"ip": row["ip"], "count": row["count"]} for row in rows]
 
     async def get_top_urls(self, limit: int):
-        return await self._cached(f"top_urls:{limit}", lambda: self._fetch_top_urls(limit))
+        return await self.db_cached(f"top_urls:{limit}", lambda: self._fetch_top_urls(limit))
 
     async def _fetch_top_urls(self, limit: int):
         rows = await self.fetch_rows("""
@@ -133,7 +231,7 @@ class StatsService:
         return [{"path": row["path"], "count": row["count"]} for row in rows]
 
     async def get_status_codes(self):
-        return await self._cached("status_codes", self._fetch_status_codes)
+        return await self.db_cached("status_codes", self._fetch_status_codes)
 
     async def _fetch_status_codes(self):
         rows = await self.fetch_rows("""
@@ -144,7 +242,9 @@ class StatsService:
 
     async def get_traffic(self, granularity: str, ip: str | None, limit: int, offset: int = 0):
         key = f"traffic:{granularity}:{ip or ''}:{limit}:{offset}"
-        return await self._cached(key, lambda: self._fetch_traffic(granularity, ip, limit, offset))
+        if ip:
+            return await self._cached(key, lambda: self._fetch_traffic(granularity, ip, limit, offset))
+        return await self.db_cached(key, lambda: self._fetch_traffic(granularity, ip, limit, offset))
 
     async def _fetch_traffic(self, granularity: str, ip: str | None, limit: int, offset: int):
         unit = DATE_TRUNC_UNITS[granularity]
@@ -202,7 +302,7 @@ class StatsService:
         return result
 
     async def get_anomalies(self):
-        return await self._cached("anomalies", self._fetch_anomalies)
+        return await self.db_cached("anomalies", self._fetch_anomalies)
 
     async def _fetch_anomalies(self):
         max_time = await self.get_max_time()
@@ -242,7 +342,7 @@ class StatsService:
         }
 
     async def get_status_codes_over_time(self, granularity: str, limit: int, offset: int = 0):
-        return await self._cached(
+        return await self.db_cached(
             f"status_over_time:{granularity}:{limit}:{offset}",
             lambda: self._fetch_status_codes_over_time(granularity, limit, offset),
         )

@@ -78,6 +78,14 @@ class SystemLogRecord(Base):
     traceback: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
+class CachedStatRecord(Base):
+    __tablename__ = "cached_stats"
+
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    value: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+
+
 def _engine_options() -> dict:
     options = {
         "pool_pre_ping": True,
