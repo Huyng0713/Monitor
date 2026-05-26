@@ -87,12 +87,13 @@ class CachedStatRecord(Base):
 
 
 def _engine_options() -> dict:
+    from uuid import uuid4
     options = {
-        "pool_pre_ping": True,
+        "pool_pre_ping": False,  # Disabled to save 400ms per checkout
         "pool_recycle": 300,
         "connect_args": {
             "statement_cache_size": 0,
-            "prepared_statement_cache_size": 0,  # Disable prepared statements in SQLAlchemy dialect
+            "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4()}__",
         },
     }
     if IS_VERCEL:
@@ -102,13 +103,16 @@ def _engine_options() -> dict:
     return options
 
 
-engine = create_async_engine(DATABASE_URL, **_engine_options())
-SessionLocal = async_sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+read_engine = create_async_engine(DATABASE_URL, **_engine_options(), execution_options={"isolation_level": "AUTOCOMMIT"})
+write_engine = create_async_engine(DATABASE_URL, **_engine_options())
+
+ReadSessionLocal = async_sessionmaker(bind=read_engine, autoflush=False, expire_on_commit=False)
+WriteSessionLocal = async_sessionmaker(bind=write_engine, autoflush=False, expire_on_commit=False)
 
 
 @asynccontextmanager
 async def read_connection():
-    async with SessionLocal() as session:
+    async with ReadSessionLocal() as session:
         try:
             yield session
         except Exception:
@@ -118,7 +122,7 @@ async def read_connection():
 
 @asynccontextmanager
 async def write_connection():
-    async with SessionLocal() as session:
+    async with WriteSessionLocal() as session:
         try:
             yield session
             await session.commit()
@@ -133,7 +137,7 @@ async def init_db():
         log_activity("Database runtime schema creation skipped")
         return
     try:
-        async with engine.begin() as connection:
+        async with write_engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
         log_activity("Database schema ready")
     except Exception:
@@ -142,7 +146,8 @@ async def init_db():
 
 
 async def dispose_engine():
-    await engine.dispose()
+    await read_engine.dispose()
+    await write_engine.dispose()
 
 
 def _entry_to_row(entry: LogEntry) -> dict:

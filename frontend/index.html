@@ -1136,15 +1136,22 @@
     }
 
     async function refreshDashboardData() {
-      await Promise.all([
-        loadSummary(),
-        loadThreatAndAnomalies(),
-        loadTopIPs(),
-        loadTraffic(document.getElementById("traffic-ip-search").value.trim()),
-        loadStatusCodes(document.querySelector(".range-btn.active").dataset.range),
-        loadRightStats(),
-        loadSystemLogs(false)
-      ]);
+      const trafficIp = document.getElementById("traffic-ip-search").value.trim();
+      const statusRange = document.querySelector(".range-btn.active").dataset.range;
+      
+      const promises = [];
+      if (!trafficIp && statusRange === "hour") {
+        promises.push(loadDashboard());
+      } else {
+        promises.push(loadSummary());
+        promises.push(loadThreatAndAnomalies());
+        promises.push(loadTopIPs());
+        promises.push(loadTraffic(trafficIp));
+        promises.push(loadStatusCodes(statusRange));
+        promises.push(loadRightStats());
+      }
+      promises.push(loadSystemLogs(false));
+      await Promise.all(promises);
     }
 
     // Tab Switcher for Threat Panel
@@ -1248,7 +1255,16 @@
     async function loadSummary() {
       try {
         const data = await fetchJson("/stats/summary");
-        
+        populateSummary(data);
+      } catch (error) {
+        document.getElementById("total-requests").textContent = "ERR";
+        document.getElementById("unique-ips").textContent = "ERR";
+        document.getElementById("error-rate").textContent = "ERR";
+        document.getElementById("health-score").textContent = "ERR";
+      }
+    }
+
+    function populateSummary(data) {
         const totalReq = data.total_requests || 0;
         const errCount = data.errors || 0;
         const errRate = totalReq > 0 ? (errCount / totalReq) * 100 : 0;
@@ -1285,17 +1301,20 @@
           elHealth.style.color = "var(--danger)";
           healthCardEl.style.borderColor = "rgba(248, 113, 113, 0.15)";
         }
-      } catch (error) {
-        document.getElementById("total-requests").textContent = "ERR";
-        document.getElementById("unique-ips").textContent = "ERR";
-        document.getElementById("error-rate").textContent = "ERR";
-        document.getElementById("health-score").textContent = "ERR";
-      }
     }
 
     async function loadThreatAndAnomalies() {
       try {
         const data = await fetchJson("/stats/anomalies");
+        populateThreatAndAnomalies(data);
+      } catch (error) {
+        renderPanelError("anomaly-rate-list", error.message, "loadThreatAndAnomalies()");
+        renderPanelError("anomaly-scanner-list", error.message);
+        renderPanelError("anomaly-error-list", error.message);
+      }
+    }
+
+    function populateThreatAndAnomalies(data) {
         rateSpikesData = data.high_frequency || [];
         scannersData = data.many_404s || [];
         errorsData = data.many_500s || [];
@@ -1303,11 +1322,6 @@
         renderAnomalyRatePage(0);
         renderAnomalyScannerPage(0);
         renderAnomalyErrorPage(0);
-      } catch (error) {
-        renderPanelError("anomaly-rate-list", error.message, "loadThreatAndAnomalies()");
-        renderPanelError("anomaly-scanner-list", error.message);
-        renderPanelError("anomaly-error-list", error.message);
-      }
     }
 
     // 1. Rate Spikes Pagination
@@ -1414,8 +1428,18 @@
       if (container) container.classList.add("loading");
       try {
         const limit = 48;
-        let allLabels = [];
-        let allCounts = [];
+        const data = await fetchJson(`/stats/traffic?granularity=hour&limit=${limit}&offset=0&ip=${encodeURIComponent(ip)}`, { signal });
+        populateTrafficData(data);
+      } catch (error) {
+        if (error.name !== 'AbortError') renderPanelError("traffic-chart-container", error.message, "loadTraffic()");
+      } finally {
+        if (container) container.classList.remove("loading");
+      }
+    }
+
+    function populateTrafficData(data) {
+        const chunkLabels = data.map(d => formatPeriod(d.period));
+        const chunkCounts = data.map(d => Number(d.count) || 0);
 
         if (!trafficChart) {
           const ctx = document.getElementById("trafficChart").getContext("2d");
@@ -1452,11 +1476,6 @@
           });
         }
 
-        const data = await fetchJson(`/stats/traffic?granularity=hour&limit=${limit}&offset=0&ip=${encodeURIComponent(ip)}`, { signal });
-        
-        const chunkLabels = data.map(d => formatPeriod(d.period));
-        const chunkCounts = data.map(d => Number(d.count) || 0);
-
         trafficChart.data.labels = chunkLabels;
         trafficChart.data.datasets[0].originalData = chunkCounts;
 
@@ -1466,12 +1485,6 @@
         trafficChart.data.datasets[0].data = newScaledData;
         trafficChart.options.scales.y = useTrafficLogScale ? compressedAxisOptions(compressedTicks) : { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } };
         trafficChart.update();
-        
-      } catch (error) {
-        if (error.name !== 'AbortError') renderPanelError("traffic-chart-container", error.message, "loadTraffic()");
-      } finally {
-        if (container) container.classList.remove("loading");
-      }
     }
 
     function toggleTrafficScale() {
@@ -1492,8 +1505,19 @@
       const wrapper = document.getElementById("statusChartWrapper");
       if (wrapper) wrapper.classList.add("loading");
       try {
-        const colors = ["#38bdf8", "#10b981", "#fbbf24", "#ef4444", "#a855f7", "#06b6d4", "#f97316", "#ec4899"];
+        const data = await fetchJson(`/stats/status-codes-over-time?granularity=${range}&limit=${limit}&offset=0`, { signal });
+        populateStatusCodesData(data);
+      } catch (error) {
+        if (error.name !== 'AbortError') renderPanelError("statusChartWrapper", error.message, `loadStatusCodes('${range}')`);
+      } finally {
+        if (wrapper) wrapper.classList.remove("loading");
+      }
+    }
 
+    function populateStatusCodesData(data) {
+        const colors = ["#38bdf8", "#10b981", "#fbbf24", "#ef4444", "#a855f7", "#06b6d4", "#f97316", "#ec4899"];
+        const wrapper = document.getElementById("statusChartWrapper");
+        
         if (!statusChart) {
           const canvas = document.getElementById("statusChart");
           canvas.width = wrapper.offsetWidth;
@@ -1515,8 +1539,6 @@
           });
         }
 
-        const data = await fetchJson(`/stats/status-codes-over-time?granularity=${range}&limit=${limit}&offset=0`, { signal });
-        
         const chunkLabels = data.labels.map(l => formatPeriod(l));
         statusChart.data.labels = chunkLabels;
         
@@ -1544,12 +1566,6 @@
 
         statusChart.options.scales.y = useStatusLogScale ? compressedAxisOptions(compressedTicks) : { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } };
         statusChart.update();
-        
-      } catch (error) {
-        if (error.name !== 'AbortError') renderPanelError("statusChartWrapper", error.message, `loadStatusCodes('${range}')`);
-      } finally {
-        if (wrapper) wrapper.classList.remove("loading");
-      }
     }
 
     function toggleStatusScale() {
@@ -1564,6 +1580,16 @@
       if (container) container.style.opacity = "0.4";
       try {
         const data = await fetchJson("/stats/top-ips?limit=8");
+        populateTopIPs(data);
+      } catch (error) {
+        renderPanelError("ip-chart-container", error.message, "loadTopIPs()");
+      } finally {
+        const container = document.getElementById("ip-chart-container");
+        if (container) container.style.opacity = "1";
+      }
+    }
+
+    function populateTopIPs(data) {
         const counts = data.map(d => d.count);
         const labels = data.map(d => d.ip);
         
@@ -1618,12 +1644,6 @@
             }
           }
         });
-      } catch (error) {
-        renderPanelError("ip-chart-container", error.message, "loadTopIPs()");
-      } finally {
-        const container = document.getElementById("ip-chart-container");
-        if (container) container.style.opacity = "1";
-      }
     }
 
     function toggleIpScale() {
@@ -1633,38 +1653,78 @@
     }
 
     async function loadRightStats() {
-      // Load both simultaneously
       Promise.all([
         fetchJson("/stats/top-urls?limit=8").then(pathsData => {
-          document.getElementById("top-paths-table").innerHTML = pathsData.map(d => `
-            <tr>
-              <td style="font-family: 'JetBrains Mono', monospace; font-size: 13px; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(d.path)}">
-                ${escapeHtml(d.path)}
-              </td>
-              <td><span style="font-weight:600; color: var(--primary);">${d.count.toLocaleString()}</span></td>
-            </tr>
-          `).join("");
+          populateTopUrls(pathsData);
         }).catch(e => renderPanelError("top-paths-table", e.message)),
         
         fetchJson("/stats/status-codes").then(codesData => {
-          const errors = codesData.filter(d => d.status >= 400);
-          
-          if (errors.length === 0) {
-            document.getElementById("error-codes-table").innerHTML = `<tr><td colspan="2" style="text-align:center; color: var(--success); padding: 14px;">No errors registered</td></tr>`;
-            return;
-          }
-          
-          document.getElementById("error-codes-table").innerHTML = errors.map(d => {
-            const col = d.status >= 500 ? 'var(--danger)' : 'var(--warning)';
-            return `
-              <tr>
-                <td><span style="color: ${col}; font-weight: 600;">${d.status}</span></td>
-                <td><span style="font-weight:600; color: var(--text-primary);">${d.count.toLocaleString()}</span></td>
-              </tr>
-            `;
-          }).join("");
+          populateStatusCodesBreakdown(codesData);
         }).catch(e => renderPanelError("error-codes-table", e.message))
       ]);
+    }
+
+    function populateTopUrls(pathsData) {
+      document.getElementById("top-paths-table").innerHTML = pathsData.map(d => `
+        <tr>
+          <td style="font-family: 'JetBrains Mono', monospace; font-size: 13px; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(d.path)}">
+            ${escapeHtml(d.path)}
+          </td>
+          <td><span style="font-weight:600; color: var(--primary);">${d.count.toLocaleString()}</span></td>
+        </tr>
+      `).join("");
+    }
+
+    function populateStatusCodesBreakdown(codesData) {
+      const errors = codesData.filter(d => d.status >= 400);
+      
+      if (errors.length === 0) {
+        document.getElementById("error-codes-table").innerHTML = `<tr><td colspan="2" style="text-align:center; color: var(--success); padding: 14px;">No errors registered</td></tr>`;
+        return;
+      }
+      
+      document.getElementById("error-codes-table").innerHTML = errors.map(d => {
+        const col = d.status >= 500 ? 'var(--danger)' : 'var(--warning)';
+        return `
+          <tr>
+            <td><span style="color: ${col}; font-weight: 600;">${d.status}</span></td>
+            <td><span style="font-weight:600; color: var(--text-primary);">${d.count.toLocaleString()}</span></td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    async function loadDashboard() {
+      const trafficContainer = document.getElementById("traffic-chart-container");
+      const statusWrapper = document.getElementById("statusChartWrapper");
+      const ipContainer = document.getElementById("ip-chart-container");
+      
+      if (trafficContainer) trafficContainer.classList.add("loading");
+      if (statusWrapper) statusWrapper.classList.add("loading");
+      if (ipContainer) ipContainer.style.opacity = "0.4";
+      
+      try {
+        const data = await fetchJson("/stats/dashboard");
+        
+        populateSummary(data.summary);
+        populateThreatAndAnomalies(data.anomalies);
+        populateTopIPs(data.top_ips);
+        populateTrafficData(data.traffic);
+        populateStatusCodesData(data.status_over_time);
+        populateTopUrls(data.top_urls);
+        populateStatusCodesBreakdown(data.status_codes);
+      } catch (error) {
+        renderPanelError("traffic-chart-container", error.message, "loadDashboard()");
+        renderPanelError("statusChartWrapper", error.message);
+        renderPanelError("ip-chart-container", error.message);
+        renderPanelError("anomaly-rate-list", error.message);
+        renderPanelError("top-paths-table", error.message);
+        renderPanelError("error-codes-table", error.message);
+      } finally {
+        if (trafficContainer) trafficContainer.classList.remove("loading");
+        if (statusWrapper) statusWrapper.classList.remove("loading");
+        if (ipContainer) ipContainer.style.opacity = "1";
+      }
     }
 
     async function runSearch(page = 0) {
@@ -1814,14 +1874,12 @@
     });
 
     // Initial load
-    function initDashboard() {
-      // Fire all API requests in parallel immediately
-      loadSummary();
-      loadThreatAndAnomalies();
-      loadTopIPs();
-      loadTraffic();
-      loadStatusCodes("hour");
-      loadRightStats();
+    async function initDashboard() {
+      // 1. First load the dashboard widgets (all 7 main components) in a single request
+      await loadDashboard();
+      
+      // 2. Once dashboard is fully populated, asynchronously load system logs and run default search
+      // This deferral prevents connection limit errors and keeps the initial paint instant
       loadSystemLogs(true);
       runSearch(0);
     }

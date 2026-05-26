@@ -193,21 +193,29 @@ class StatsService:
         return await self.db_cached("summary", self._fetch_summary)
 
     async def _fetch_summary(self):
-        async def get_total():
-            async with self.connection_factory() as session:
-                return await self.fetch_scalar("SELECT COUNT(*) FROM logs", session=session)
-        async def get_errors():
-            async with self.connection_factory() as session:
-                return await self.fetch_scalar("SELECT COUNT(*) FROM logs WHERE status >= 400", session=session)
-        async def get_ips():
-            async with self.connection_factory() as session:
-                return await self.fetch_scalar("SELECT COUNT(DISTINCT ip) FROM logs", session=session)
-
-        total_reqs, errors, unique_ips = await asyncio.gather(get_total(), get_errors(), get_ips())
+        query = """
+            WITH unique_ips AS (
+                SELECT ip FROM logs GROUP BY ip
+            ),
+            counts AS (
+                SELECT 
+                    COUNT(*) AS total_requests,
+                    COUNT(*) FILTER (WHERE status >= 400) AS errors
+                FROM logs
+            )
+            SELECT 
+                c.total_requests,
+                c.errors,
+                (SELECT COUNT(*) FROM unique_ips) AS unique_ips
+            FROM counts c
+        """
+        async with self.connection_factory() as session:
+            res = await session.execute(text(query))
+            row = res.mappings().one()
         return {
-            "total_requests": total_reqs,
-            "unique_ips": unique_ips,
-            "errors": errors,
+            "total_requests": row["total_requests"],
+            "unique_ips": row["unique_ips"],
+            "errors": row["errors"],
         }
 
     async def get_top_ips(self, limit: int):
@@ -309,36 +317,225 @@ class StatsService:
         time_threshold = max_time - timedelta(hours=24)
         params = {"time_threshold": time_threshold}
 
-        async with self.connection_factory() as session:
-            high_freq = await self.fetch_rows("""
-                SELECT ip, to_char(date_trunc('minute', l.time), 'YYYY-MM-DD"T"HH24:MI') as minute, COUNT(*) as count
-                FROM logs l
-                WHERE l.time >= :time_threshold
+        query = """
+            WITH base_data AS NOT MATERIALIZED (
+                SELECT ip, status, date_trunc('minute', time) as minute
+                FROM logs
+                WHERE time >= :time_threshold
+            ),
+            high_freq AS (
+                SELECT ip, minute, COUNT(*) as count
+                FROM base_data
                 GROUP BY ip, minute
                 HAVING COUNT(*) > 100
-                ORDER BY count DESC
-            """, params, session=session)
-
-            many_404 = await self.fetch_rows("""
+            ),
+            many_404 AS (
                 SELECT ip, COUNT(*) as count
-                FROM logs l
-                WHERE l.status = 404 AND l.time >= :time_threshold
-                GROUP BY ip HAVING COUNT(*) > 20
-                ORDER BY count DESC
-            """, params, session=session)
-
-            many_500 = await self.fetch_rows("""
+                FROM base_data
+                WHERE status = 404
+                GROUP BY ip
+                HAVING COUNT(*) > 20
+            ),
+            many_500 AS (
                 SELECT ip, COUNT(*) as count
-                FROM logs l
-                WHERE l.status = 500 AND l.time >= :time_threshold
-                GROUP BY ip HAVING COUNT(*) > 10
-                ORDER BY count DESC
-            """, params, session=session)
+                FROM base_data
+                WHERE status = 500
+                GROUP BY ip
+                HAVING COUNT(*) > 10
+            )
+            SELECT 
+                (SELECT coalesce(json_agg(h), '[]'::json) FROM (SELECT ip, to_char(minute, 'YYYY-MM-DD"T"HH24:MI') as minute, count FROM high_freq ORDER BY count DESC) h) AS high_frequency,
+                (SELECT coalesce(json_agg(c4), '[]'::json) FROM (SELECT ip, count FROM many_404 ORDER BY count DESC) c4) AS many_404s,
+                (SELECT coalesce(json_agg(c5), '[]'::json) FROM (SELECT ip, count FROM many_500 ORDER BY count DESC) c5) AS many_500s
+        """
+        import json
+        async with self.connection_factory() as session:
+            result = await session.execute(text(query), params)
+            row = result.mappings().one()
+            high_freq = row["high_frequency"]
+            many_404 = row["many_404s"]
+            many_500 = row["many_500s"]
+            
+            if isinstance(high_freq, str):
+                high_freq = json.loads(high_freq)
+            if isinstance(many_404, str):
+                many_404 = json.loads(many_404)
+            if isinstance(many_500, str):
+                many_500 = json.loads(many_500)
 
         return {
-            "high_frequency": [{"ip": row["ip"], "minute": row["minute"], "count": row["count"]} for row in high_freq],
-            "many_404s": [{"ip": row["ip"], "count": row["count"]} for row in many_404],
-            "many_500s": [{"ip": row["ip"], "count": row["count"]} for row in many_500],
+            "high_frequency": high_freq,
+            "many_404s": many_404,
+            "many_500s": many_500,
+        }
+
+    async def get_dashboard_data(self):
+        return await self.db_cached("dashboard", self._fetch_dashboard_data)
+
+    async def _fetch_dashboard_data(self):
+        query = """
+            WITH 
+            max_time_cte AS (
+                SELECT COALESCE(MAX(time), NOW()) AS val FROM logs
+            ),
+            params AS (
+                SELECT 
+                    val AS max_time,
+                    val - interval '47 hours' AS start_time,
+                    val AS end_time,
+                    val + interval '1 hour' AS end_time_exclusive,
+                    val - interval '24 hours' AS time_threshold
+                FROM max_time_cte
+            ),
+            summary_cte AS (
+                WITH unique_ips AS (
+                    SELECT ip FROM logs GROUP BY ip
+                ),
+                counts AS (
+                    SELECT 
+                        COUNT(*) AS total_requests,
+                        COUNT(*) FILTER (WHERE status >= 400) AS errors
+                    FROM logs
+                )
+                SELECT 
+                    c.total_requests,
+                    c.errors,
+                    (SELECT COUNT(*) FROM unique_ips) AS unique_ips
+                FROM counts c
+            ),
+            top_ips_cte AS (
+                SELECT json_agg(h) AS val FROM (
+                    SELECT ip, COUNT(*) as count FROM logs
+                    GROUP BY ip ORDER BY count DESC LIMIT 8
+                ) h
+            ),
+            top_urls_cte AS (
+                SELECT json_agg(h) AS val FROM (
+                    SELECT path, COUNT(*) as count FROM logs
+                    GROUP BY path ORDER BY count DESC LIMIT 8
+                ) h
+            ),
+            status_codes_cte AS (
+                SELECT json_agg(h) AS val FROM (
+                    SELECT status, COUNT(*) as count FROM logs
+                    GROUP BY status ORDER BY count DESC
+                ) h
+            ),
+            traffic_cte AS (
+                SELECT json_agg(h) AS val FROM (
+                    SELECT
+                        to_char(date_trunc('hour', l.time), 'YYYY-MM-DD"T"HH24') AS period,
+                        COUNT(*) AS count
+                    FROM logs l, params p
+                    WHERE l.time >= p.start_time
+                      AND l.time <= p.end_time
+                    GROUP BY date_trunc('hour', l.time)
+                    ORDER BY date_trunc('hour', l.time)
+                ) h
+            ),
+            status_over_time_cte AS (
+                SELECT json_agg(h) AS val FROM (
+                    SELECT
+                        date_trunc('hour', l.time) AS period_raw,
+                        l.status,
+                        COUNT(*) AS count
+                    FROM logs l, params p
+                    WHERE l.time >= p.start_time
+                      AND l.time < p.end_time_exclusive
+                    GROUP BY 1, 2
+                    ORDER BY 1, 2
+                ) h
+            ),
+            anomalies_cte AS (
+                WITH base_data AS NOT MATERIALIZED (
+                    SELECT ip, status, date_trunc('minute', time) as minute
+                    FROM logs, params p
+                    WHERE time >= p.time_threshold
+                ),
+                high_freq AS (
+                    SELECT ip, minute, COUNT(*) as count
+                    FROM base_data
+                    GROUP BY ip, minute
+                    HAVING COUNT(*) > 100
+                ),
+                many_404 AS (
+                    SELECT ip, COUNT(*) as count
+                    FROM base_data
+                    WHERE status = 404
+                    GROUP BY ip
+                    HAVING COUNT(*) > 20
+                ),
+                many_500 AS (
+                    SELECT ip, COUNT(*) as count
+                    FROM base_data
+                    WHERE status = 500
+                    GROUP BY ip
+                    HAVING COUNT(*) > 10
+                )
+                SELECT 
+                    (SELECT coalesce(json_agg(h), '[]'::json) FROM (SELECT ip, to_char(minute, 'YYYY-MM-DD"T"HH24:MI') as minute, count FROM high_freq ORDER BY count DESC) h) AS high_frequency,
+                    (SELECT coalesce(json_agg(c4), '[]'::json) FROM (SELECT ip, count FROM many_404 ORDER BY count DESC) c4) AS many_404s,
+                    (SELECT coalesce(json_agg(c5), '[]'::json) FROM (SELECT ip, count FROM many_500 ORDER BY count DESC) c5) AS many_500s
+            )
+            SELECT json_build_object(
+                'max_time', (SELECT val FROM max_time_cte),
+                'summary', (SELECT row_to_json(s) FROM summary_cte s),
+                'top_ips', (SELECT coalesce(val, '[]'::json) FROM top_ips_cte),
+                'top_urls', (SELECT coalesce(val, '[]'::json) FROM top_urls_cte),
+                'status_codes', (SELECT coalesce(val, '[]'::json) FROM status_codes_cte),
+                'traffic', (SELECT coalesce(val, '[]'::json) FROM traffic_cte),
+                'status_over_time', (SELECT coalesce(val, '[]'::json) FROM status_over_time_cte),
+                'anomalies', (SELECT row_to_json(a) FROM anomalies_cte a)
+            ) AS result;
+        """
+        async with self.connection_factory() as session:
+            res = await session.execute(text(query))
+            raw_result = res.scalar()
+
+        # Format status_over_time in Python to labels/datasets format
+        max_time_str = raw_result.get("max_time")
+        if max_time_str:
+            max_time = datetime.fromisoformat(max_time_str)
+        else:
+            max_time = datetime.now(timezone.utc)
+
+        end_period = max_time.replace(minute=0, second=0, microsecond=0)
+        start_time = end_period - 47 * timedelta(hours=1)
+
+        labels = []
+        for i in range(48):
+            p = start_time + i * timedelta(hours=1)
+            labels.append(p.strftime("%Y-%m-%dT%H"))
+
+        db_data = {}
+        all_statuses = set()
+        for row in raw_result.get("status_over_time", []) or []:
+            p_raw_str = row.get("period_raw")
+            if p_raw_str:
+                p_dt = datetime.fromisoformat(p_raw_str)
+                p_str = p_dt.strftime("%Y-%m-%dT%H")
+                status = str(row.get("status")) if row.get("status") is not None else "Unknown"
+                all_statuses.add(status)
+                db_data.setdefault(p_str, {})[status] = row.get("count", 0)
+
+        datasets = []
+        for status in sorted(all_statuses):
+            status_data = []
+            for label in labels:
+                status_data.append(db_data.get(label, {}).get(status, 0))
+            datasets.append({
+                "label": status,
+                "data": status_data
+            })
+
+        return {
+            "summary": raw_result.get("summary"),
+            "top_ips": raw_result.get("top_ips"),
+            "top_urls": raw_result.get("top_urls"),
+            "status_codes": raw_result.get("status_codes"),
+            "traffic": raw_result.get("traffic"),
+            "status_over_time": {"labels": labels, "datasets": datasets},
+            "anomalies": raw_result.get("anomalies"),
         }
 
     async def get_status_codes_over_time(self, granularity: str, limit: int, offset: int = 0):

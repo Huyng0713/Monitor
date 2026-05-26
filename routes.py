@@ -138,6 +138,11 @@ async def get_anomalies():
     return json_cached(await stats_service.get_anomalies())
 
 
+@app.get("/stats/dashboard")
+async def get_dashboard():
+    return json_cached(await stats_service.get_dashboard_data())
+
+
 @app.get("/stats/search")
 async def search_logs(
     ip: str = None,
