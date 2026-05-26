@@ -136,6 +136,35 @@
       100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
     }
 
+    /* Chart Loading Spinner */
+    .chart-loader {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 40px;
+      height: 40px;
+      border: 3px solid rgba(255, 255, 255, 0.1);
+      border-radius: 50%;
+      border-top-color: var(--primary);
+      animation: spin 1s ease-in-out infinite;
+      z-index: 10;
+      display: none;
+    }
+    
+    .chart-wrapper.loading .chart-loader {
+      display: block;
+    }
+    
+    .chart-wrapper.loading canvas {
+      opacity: 0.3 !important;
+      transition: opacity 0.3s;
+    }
+    
+    @keyframes spin {
+      to { transform: translate(-50%, -50%) rotate(360deg); }
+    }
+
     /* Live Countdown Progress Bar */
     #live-progress-container {
       width: 100%;
@@ -780,7 +809,8 @@
           <button id="traffic-scale-toggle" class="toggle-btn" onclick="toggleTrafficScale()" style="height:36px; padding:0 12px; font-size:13px;">Log Scale</button>
         </div>
       </div>
-      <div id="traffic-chart-container" style="height: 350px; position: relative; width: 100%;">
+      <div id="traffic-chart-container" class="chart-wrapper" style="height: 350px; position: relative; width: 100%;">
+        <div class="chart-loader"></div>
         <canvas id="trafficChart" style="height: 350px; width: 100%;"></canvas>
       </div>
     </div>
@@ -804,7 +834,8 @@
         </div>
       </div>
       <div style="overflow-x: auto; width: 100%;">
-        <div id="statusChartWrapper" style="min-width: 800px; height: 350px; position: relative;">
+        <div id="statusChartWrapper" class="chart-wrapper" style="min-width: 800px; height: 350px; position: relative;">
+          <div class="chart-loader"></div>
           <canvas id="statusChart" style="height: 350px; width: 100%;"></canvas>
         </div>
       </div>
@@ -900,7 +931,7 @@
   <!-- Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dayjs@1/plugin/customParseFormat.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <script>
     const API = "";
 
@@ -1176,43 +1207,69 @@
       };
     }
 
+    // Number animation function
+    function animateValue(obj, start, end, duration, formatStr = "") {
+      let startTimestamp = null;
+      const step = (timestamp) => {
+        if (!startTimestamp) startTimestamp = timestamp;
+        const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+        const easeOut = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+        const current = start + easeOut * (end - start);
+        
+        if (formatStr === "%") {
+          obj.innerHTML = current.toFixed(2) + "%";
+        } else if (formatStr === "health") {
+          obj.innerHTML = Math.round(current) + "%";
+        } else {
+          obj.innerHTML = Math.floor(current).toLocaleString();
+        }
+        
+        if (progress < 1) {
+          window.requestAnimationFrame(step);
+        }
+      };
+      window.requestAnimationFrame(step);
+    }
+
     // Load Data Functions
     async function loadSummary() {
       try {
         const data = await fetchJson("/stats/summary");
         
-        // Render basic metrics
-        document.getElementById("total-requests").textContent = data.total_requests.toLocaleString();
-        document.getElementById("unique-ips").textContent = data.unique_ips.toLocaleString();
-        
-        // Calculate health metrics
-        const errorRate = data.total_requests > 0 ? (data.errors / data.total_requests * 100) : 0;
-        document.getElementById("error-rate").textContent = `${errorRate.toFixed(2)}%`;
+        const totalReq = data.total_requests || 0;
+        const errCount = data.errors || 0;
+        const errRate = totalReq > 0 ? (errCount / totalReq) * 100 : 0;
+        const health = Math.max(0, 100 - errRate);
+
+        const elTotal = document.getElementById("total-requests");
+        const elIps = document.getElementById("unique-ips");
+        const elError = document.getElementById("error-rate");
+        const elHealth = document.getElementById("health-score");
+
+        animateValue(elTotal, 0, totalReq, 2000);
+        animateValue(elIps, 0, data.unique_ips || 0, 2000);
+        animateValue(elError, 0, errRate, 2000, "%");
+        animateValue(elHealth, 0, health, 2000, "health");
         
         // Set error rate state coloring
-        if (errorRate >= 5) {
+        if (errRate >= 5) {
           document.getElementById("error-rate").style.color = "var(--danger)";
-        } else if (errorRate >= 2) {
+        } else if (errRate >= 2) {
           document.getElementById("error-rate").style.color = "var(--warning)";
         } else {
           document.getElementById("error-rate").style.color = "var(--success)";
         }
         
-        // Health Score computation
-        let healthVal = 100 - (errorRate * 4); // Scale error impact
-        healthVal = Math.max(10, Math.min(100, healthVal));
-        const healthScoreEl = document.getElementById("health-score");
-        healthScoreEl.textContent = `${Math.round(healthVal)}%`;
-        
-        const healthCardEl = healthScoreEl.closest(".card");
-        if (healthVal >= 95) {
-          healthScoreEl.style.color = "var(--success)";
+        // Health Score coloring
+        const healthCardEl = elHealth.closest(".card");
+        if (health >= 95) {
+          elHealth.style.color = "var(--success)";
           healthCardEl.style.borderColor = "rgba(16, 185, 129, 0.15)";
-        } else if (healthVal >= 85) {
-          healthScoreEl.style.color = "var(--warning)";
+        } else if (health >= 85) {
+          elHealth.style.color = "var(--warning)";
           healthCardEl.style.borderColor = "rgba(251, 191, 36, 0.15)";
         } else {
-          healthScoreEl.style.color = "var(--danger)";
+          elHealth.style.color = "var(--danger)";
           healthCardEl.style.borderColor = "rgba(248, 113, 113, 0.15)";
         }
       } catch (error) {
@@ -1341,10 +1398,9 @@
       const signal = trafficAbortController.signal;
 
       const container = document.getElementById("traffic-chart-container");
-      if (container) container.style.opacity = "0.4";
+      if (container) container.classList.add("loading");
       try {
         const limit = 48;
-        const chunkSize = 12;
         let allLabels = [];
         let allCounts = [];
 
@@ -1383,31 +1439,26 @@
           });
         }
 
-        trafficChart.data.labels = [];
-        trafficChart.data.datasets[0].originalData = [];
-        trafficChart.data.datasets[0].data = [];
+        const data = await fetchJson(`/stats/traffic?granularity=hour&limit=${limit}&offset=0&ip=${encodeURIComponent(ip)}`, { signal });
+        
+        // Reverse because backend returns DESC (newest first), we want oldest first (left to right)
+        const chunkLabels = data.map(d => formatPeriod(d.period)).reverse();
+        const chunkCounts = data.map(d => Number(d.count) || 0).reverse();
+
+        trafficChart.data.labels = chunkLabels;
+        trafficChart.data.datasets[0].originalData = chunkCounts;
+
+        const compressedTicks = buildCompressedTicks(Math.max(...trafficChart.data.datasets[0].originalData, 1));
+        const newScaledData = useTrafficLogScale ? compressedData(trafficChart.data.datasets[0].originalData, compressedTicks) : trafficChart.data.datasets[0].originalData;
+        
+        trafficChart.data.datasets[0].data = newScaledData;
+        trafficChart.options.scales.y = useTrafficLogScale ? compressedAxisOptions(compressedTicks) : { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } };
         trafficChart.update();
-
-        for (let offset = limit - chunkSize; offset > -chunkSize; offset -= chunkSize) {
-          const fetchLimit = offset < 0 ? chunkSize + offset : chunkSize;
-          const fetchOffset = Math.max(0, offset);
-          if (fetchLimit <= 0) break;
-
-          const data = await fetchJson(`/stats/traffic?granularity=hour&limit=${fetchLimit}&offset=${fetchOffset}&ip=${encodeURIComponent(ip)}`, { signal });
-          allLabels.push(...data.map(d => formatPeriod(d.period)));
-          allCounts.push(...data.map(d => Number(d.count) || 0));
-
-          const compressedTicks = buildCompressedTicks(Math.max(...allCounts, 1));
-          trafficChart.data.labels = allLabels;
-          trafficChart.data.datasets[0].originalData = allCounts;
-          trafficChart.data.datasets[0].data = useTrafficLogScale ? compressedData(allCounts, compressedTicks) : allCounts;
-          trafficChart.options.scales.y = useTrafficLogScale ? compressedAxisOptions(compressedTicks) : { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } };
-          trafficChart.update();
-        }
+        
       } catch (error) {
         if (error.name !== 'AbortError') renderPanelError("traffic-chart-container", error.message, "loadTraffic()");
       } finally {
-        if (container) container.style.opacity = "1";
+        if (container) container.classList.remove("loading");
       }
     }
 
@@ -1427,75 +1478,66 @@
       document.getElementById("status-limit-unit").textContent = range === "minute" ? "minutes" : range === "day" ? "days" : "hours";
       
       const wrapper = document.getElementById("statusChartWrapper");
-      if (wrapper) wrapper.style.opacity = "0.4";
+      if (wrapper) wrapper.classList.add("loading");
       try {
-        const chunkSize = range === 'minute' ? 10 : range === 'hour' ? 12 : 5;
-        let allLabels = [];
-        let datasetsData = {};
         const colors = ["#38bdf8", "#10b981", "#fbbf24", "#ef4444", "#a855f7", "#06b6d4", "#f97316", "#ec4899"];
 
-        if (statusChart) {
-          statusChart.destroy();
-          statusChart = null;
-        }
-
-        for (let offset = limit - chunkSize; offset > -chunkSize; offset -= chunkSize) {
-          const fetchLimit = offset < 0 ? chunkSize + offset : chunkSize;
-          const fetchOffset = Math.max(0, offset);
-          if (fetchLimit <= 0) break;
-
-          const data = await fetchJson(`/stats/status-codes-over-time?granularity=${range}&limit=${fetchLimit}&offset=${fetchOffset}`, { signal });
-          
-          allLabels.push(...data.labels.map(l => formatPeriod(l)));
-          data.datasets.forEach(ds => {
-            if (!datasetsData[ds.label]) datasetsData[ds.label] = { originalData: new Array(allLabels.length - data.labels.length).fill(0) };
-            datasetsData[ds.label].originalData.push(...ds.data.map(v => Number(v) || 0));
-          });
-          
-          Object.keys(datasetsData).forEach(lbl => {
-            if (!data.datasets.find(ds => ds.label === lbl)) datasetsData[lbl].originalData.push(...new Array(data.labels.length).fill(0));
-          });
-
-          const maxCount = Math.max(10, ...Object.values(datasetsData).flatMap(d => d.originalData));
-          const compressedTicks = buildCompressedTicks(maxCount);
-          const datasets = Object.keys(datasetsData).map((lbl, idx) => ({
-            label: `Status ${lbl}`,
-            originalData: datasetsData[lbl].originalData,
-            data: useStatusLogScale ? compressedData(datasetsData[lbl].originalData, compressedTicks) : datasetsData[lbl].originalData,
-            borderColor: colors[idx % colors.length],
-            tension: 0.4, pointRadius: 0, pointHoverRadius: 6, borderWidth: 3, spanGaps: true
-          }));
-
-          if (!statusChart) {
-            const canvas = document.getElementById("statusChart");
-            canvas.width = wrapper.offsetWidth;
-            canvas.height = wrapper.offsetHeight;
-            statusChart = new Chart(canvas, {
-              type: "line", plugins: [glowPlugin],
-              data: { labels: allLabels, datasets },
-              options: {
-                responsive: true, maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
-                plugins: {
-                  legend: { position: 'top', labels: { boxWidth: 10, padding: 15 } },
-                  tooltip: { backgroundColor: '#0f172a', borderColor: 'rgba(255, 255, 255, 0.1)', borderWidth: 1, callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.dataset.originalData?.[ctx.dataIndex] ?? ctx.parsed.y}` } }
-                },
-                scales: {
-                  x: { ticks: { color: "#64748b", maxTicksLimit: 12 }, grid: { display: false } },
-                  y: useStatusLogScale ? compressedAxisOptions(compressedTicks) : { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } }
-                }
+        if (!statusChart) {
+          const canvas = document.getElementById("statusChart");
+          canvas.width = wrapper.offsetWidth;
+          canvas.height = wrapper.offsetHeight;
+          statusChart = new Chart(canvas, {
+            type: "line", plugins: [glowPlugin],
+            data: { labels: [], datasets: [] },
+            options: {
+              responsive: true, maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+              plugins: {
+                legend: { position: 'top', labels: { boxWidth: 10, padding: 15 } },
+                tooltip: { backgroundColor: '#0f172a', borderColor: 'rgba(255, 255, 255, 0.1)', borderWidth: 1, callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.dataset.originalData?.[ctx.dataIndex] ?? ctx.parsed.y}` } }
+              },
+              scales: {
+                x: { ticks: { color: "#64748b", maxTicksLimit: 12 }, grid: { display: false } },
+                y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } }
               }
-            });
-          } else {
-            statusChart.data.labels = allLabels;
-            statusChart.data.datasets = datasets;
-            statusChart.options.scales.y = useStatusLogScale ? compressedAxisOptions(compressedTicks) : { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } };
-            statusChart.update();
-          }
+            }
+          });
         }
+
+        const data = await fetchJson(`/stats/status-codes-over-time?granularity=${range}&limit=${limit}&offset=0`, { signal });
+        
+        // Reverse arrays to display oldest first (left to right)
+        const chunkLabels = data.labels.map(l => formatPeriod(l)).reverse();
+        statusChart.data.labels = chunkLabels;
+        
+        // Prepare datasets
+        const newDatasets = [];
+        data.datasets.forEach((ds, i) => {
+          newDatasets.push({
+            label: `Status ${ds.label}`,
+            originalData: ds.data.map(v => Number(v) || 0).reverse(),
+            data: [],
+            borderColor: colors[i % colors.length],
+            tension: 0.4, pointRadius: 0, pointHoverRadius: 6, borderWidth: 3, spanGaps: true
+          });
+        });
+        
+        statusChart.data.datasets = newDatasets;
+
+        const maxCount = Math.max(10, ...statusChart.data.datasets.flatMap(d => d.originalData));
+        const compressedTicks = buildCompressedTicks(maxCount);
+        
+        statusChart.data.datasets.forEach(chartDs => {
+          const newScaledData = useStatusLogScale ? compressedData(chartDs.originalData, compressedTicks) : chartDs.originalData;
+          chartDs.data = newScaledData;
+        });
+
+        statusChart.options.scales.y = useStatusLogScale ? compressedAxisOptions(compressedTicks) : { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } };
+        statusChart.update();
+        
       } catch (error) {
         if (error.name !== 'AbortError') renderPanelError("statusChartWrapper", error.message, `loadStatusCodes('${range}')`);
       } finally {
-        if (wrapper) wrapper.style.opacity = "1";
+        if (wrapper) wrapper.classList.remove("loading");
       }
     }
 
@@ -1580,43 +1622,38 @@
     }
 
     async function loadRightStats() {
-      // 1. Top Paths
-      try {
-        const pathsData = await fetchJson("/stats/top-urls?limit=8");
-        document.getElementById("top-paths-table").innerHTML = pathsData.map(d => `
-          <tr>
-            <td style="font-family: 'JetBrains Mono', monospace; font-size: 13px; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(d.path)}">
-              ${escapeHtml(d.path)}
-            </td>
-            <td><span style="font-weight:600; color: var(--primary);">${d.count.toLocaleString()}</span></td>
-          </tr>
-        `).join("");
-      } catch (e) {
-        renderPanelError("top-paths-table", e.message);
-      }
-
-      // 2. Error Breakdown codes
-      try {
-        const codesData = await fetchJson("/stats/status-codes");
-        const errors = codesData.filter(d => d.status >= 400);
-        
-        if (errors.length === 0) {
-          document.getElementById("error-codes-table").innerHTML = `<tr><td colspan="2" style="text-align:center; color: var(--success); padding: 14px;">No errors registered</td></tr>`;
-          return;
-        }
-        
-        document.getElementById("error-codes-table").innerHTML = errors.map(d => {
-          const col = d.status >= 500 ? 'var(--danger)' : 'var(--warning)';
-          return `
+      // Load both simultaneously
+      Promise.all([
+        fetchJson("/stats/top-urls?limit=8").then(pathsData => {
+          document.getElementById("top-paths-table").innerHTML = pathsData.map(d => `
             <tr>
-              <td><span style="color: ${col}; font-weight: 600;">${d.status}</span></td>
-              <td><span style="font-weight:600; color: var(--text-primary);">${d.count.toLocaleString()}</span></td>
+              <td style="font-family: 'JetBrains Mono', monospace; font-size: 13px; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(d.path)}">
+                ${escapeHtml(d.path)}
+              </td>
+              <td><span style="font-weight:600; color: var(--primary);">${d.count.toLocaleString()}</span></td>
             </tr>
-          `;
-        }).join("");
-      } catch (e) {
-        renderPanelError("error-codes-table", e.message);
-      }
+          `).join("");
+        }).catch(e => renderPanelError("top-paths-table", e.message)),
+        
+        fetchJson("/stats/status-codes").then(codesData => {
+          const errors = codesData.filter(d => d.status >= 400);
+          
+          if (errors.length === 0) {
+            document.getElementById("error-codes-table").innerHTML = `<tr><td colspan="2" style="text-align:center; color: var(--success); padding: 14px;">No errors registered</td></tr>`;
+            return;
+          }
+          
+          document.getElementById("error-codes-table").innerHTML = errors.map(d => {
+            const col = d.status >= 500 ? 'var(--danger)' : 'var(--warning)';
+            return `
+              <tr>
+                <td><span style="color: ${col}; font-weight: 600;">${d.status}</span></td>
+                <td><span style="font-weight:600; color: var(--text-primary);">${d.count.toLocaleString()}</span></td>
+              </tr>
+            `;
+          }).join("");
+        }).catch(e => renderPanelError("error-codes-table", e.message))
+      ]);
     }
 
     async function runSearch(page = 0) {
@@ -1755,8 +1792,9 @@
     });
 
     // Initial load
-    async function initDashboard() {
-      await loadSummary();
+    function initDashboard() {
+      // Fire all API requests in parallel immediately
+      loadSummary();
       loadThreatAndAnomalies();
       loadTopIPs();
       loadTraffic();
