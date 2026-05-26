@@ -320,20 +320,50 @@ class StatsService:
             from datetime import datetime, timedelta, timezone
             time_from = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
             
-        where_clauses = []
         params: dict[str, object] = {"limit": limit, "offset": offset}
-        if ip:
-            where_clauses.append("ip LIKE :ip")
-            params["ip"] = f"{ip}%"
-        if path:
-            where_clauses.append("path LIKE :path")
-            params["path"] = f"%{path}%"
-        if status is not None:
-            where_clauses.append("status = :status")
-            params["status"] = status
         
-        # If we are unfiltered, we don't need a WHERE clause at all, which allows Postgres to scan instantly
-        if not is_unfiltered:
+        if is_unfiltered:
+            # Unfiltered query using the fast pg_class estimate with count fallback in a single roundtrip
+            query = """
+                WITH paginated_rows AS (
+                    SELECT ip, time, method, path, status, size
+                    FROM logs
+                    LIMIT :limit OFFSET :offset
+                ),
+                estimated_count AS (
+                    SELECT reltuples::bigint AS total FROM pg_class WHERE relname = 'logs'
+                ),
+                final_count AS (
+                    SELECT CASE 
+                        WHEN total <= 0 THEN (SELECT COUNT(*) FROM logs)
+                        ELSE total
+                    END AS total
+                    FROM estimated_count
+                )
+                SELECT 
+                    (SELECT total FROM final_count) AS total_count,
+                    (SELECT coalesce(json_agg(r), '[]'::json) FROM paginated_rows r) AS rows
+            """
+            async with self.connection_factory() as session:
+                result = await session.execute(text(query), params)
+                row = result.mappings().one()
+                total = row["total_count"]
+                rows = row["rows"]
+                if isinstance(rows, str):
+                    import json
+                    rows = json.loads(rows)
+        else:
+            where_clauses = []
+            if ip:
+                where_clauses.append("ip LIKE :ip")
+                params["ip"] = f"{ip}%"
+            if path:
+                where_clauses.append("path LIKE :path")
+                params["path"] = f"%{path}%"
+            if status is not None:
+                where_clauses.append("status = :status")
+                params["status"] = status
+            
             if time_from:
                 where_clauses.append("time >= :time_from")
                 params["time_from"] = self._parse_datetime(time_from)
@@ -341,48 +371,54 @@ class StatsService:
                 where_clauses.append("time <= :time_to")
                 params["time_to"] = self._parse_datetime(time_to)
 
-        where_sql = " AND ".join(where_clauses) or "1=1"
-        count_params = {key: value for key, value in params.items() if key not in {"limit", "offset"}}
+            where_sql = " AND ".join(where_clauses) or "1=1"
 
-        if is_unfiltered:
-            # For the default load/reset state, read the total count from the cached summary to save 2.8s
-            summary = await self.get_summary()
-            total = summary["total_requests"]
-            
-            async with self.connection_factory() as session:
-                rows = await self.fetch_rows(f"""
-                    SELECT ip, time, method, path, status, size
-                    FROM logs
+            # Filtered query using a single roundtrip with key lookup to avoid Seq Scan on logs
+            query = f"""
+                WITH filtered_ids AS NOT MATERIALIZED (
+                    SELECT id 
+                    FROM logs 
+                    WHERE {where_sql}
+                ),
+                total_count AS (
+                    SELECT COUNT(*) AS total FROM filtered_ids
+                ),
+                paginated_ids AS (
+                    SELECT id 
+                    FROM filtered_ids
                     LIMIT :limit OFFSET :offset
-                """, params, session=session)
-        else:
-            # Run count and detail queries in parallel using concurrent database sessions
-            async def get_total():
-                async with self.connection_factory() as session:
-                    return await self.fetch_scalar(f"SELECT COUNT(*) FROM logs WHERE {where_sql}", count_params, session=session)
-            
-            async def get_rows():
-                async with self.connection_factory() as session:
-                    return await self.fetch_rows(f"""
-                        SELECT ip, time, method, path, status, size
-                        FROM logs
-                        WHERE {where_sql}
-                        LIMIT :limit OFFSET :offset
-                    """, params, session=session)
-            
-            total, rows = await asyncio.gather(get_total(), get_rows())
+                )
+                SELECT 
+                    (SELECT total FROM total_count) AS total_count,
+                    (
+                        SELECT coalesce(json_agg(r), '[]'::json) 
+                        FROM (
+                            SELECT l.ip, l.time, l.method, l.path, l.status, l.size
+                            FROM paginated_ids p
+                            JOIN logs l ON l.id = p.id
+                        ) r
+                    ) AS rows
+            """
+            async with self.connection_factory() as session:
+                result = await session.execute(text(query), params)
+                row = result.mappings().one()
+                total = row["total_count"]
+                rows = row["rows"]
+                if isinstance(rows, str):
+                    import json
+                    rows = json.loads(rows)
 
         return {
             "rows": [
                 {
-                    "ip": row["ip"],
-                    "time": row["time"].isoformat() if hasattr(row["time"], "isoformat") else row["time"],
-                    "method": row["method"],
-                    "path": row["path"],
-                    "status": row["status"],
-                    "size": row["size"],
+                    "ip": r.get("ip"),
+                    "time": r.get("time").isoformat() if hasattr(r.get("time"), "isoformat") else r.get("time"),
+                    "method": r.get("method"),
+                    "path": r.get("path"),
+                    "status": r.get("status"),
+                    "size": r.get("size"),
                 }
-                for row in rows
+                for r in rows
             ],
             "total": total,
         }
