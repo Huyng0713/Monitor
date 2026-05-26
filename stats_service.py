@@ -1,6 +1,6 @@
 import asyncio
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import text
 
@@ -20,6 +20,11 @@ TO_CHAR_FORMATS = {
     "minute": "YYYY-MM-DD\"T\"HH24:MI",
     "hour": "YYYY-MM-DD\"T\"HH24",
     "day": "YYYY-MM-DD",
+}
+TIMEDELTA_UNITS = {
+    "minute": timedelta(minutes=1),
+    "hour": timedelta(hours=1),
+    "day": timedelta(days=1),
 }
 
 
@@ -59,6 +64,14 @@ class StatsService:
             value = result.scalar()
         return int(value or 0)
 
+    async def fetch_val(self, query: str, params: dict | None = None, session = None):
+        if session:
+            result = await session.execute(text(query), params or {})
+            return result.scalar()
+        async with self.connection_factory() as session_ctx:
+            result = await session_ctx.execute(text(query), params or {})
+            return result.scalar()
+
     async def fetch_rows(self, query: str, params: dict | None = None, session = None):
         if session:
             result = await session.execute(text(query), params or {})
@@ -71,18 +84,16 @@ class StatsService:
         return await self._cached("summary", self._fetch_summary)
 
     async def _fetch_summary(self):
-        rows = await self.fetch_rows("""
-            SELECT
-                COUNT(*) AS total_requests,
-                COUNT(DISTINCT ip) AS unique_ips,
-                COUNT(*) FILTER (WHERE status >= 400) AS errors
-            FROM logs
-        """)
-        row = rows[0]
+        import asyncio
+        total_reqs, errors, unique_ips = await asyncio.gather(
+            self.fetch_scalar("SELECT COUNT(*) FROM logs"),
+            self.fetch_scalar("SELECT COUNT(*) FROM logs WHERE status >= 400"),
+            self.fetch_scalar("SELECT COUNT(DISTINCT ip) FROM logs")
+        )
         return {
-            "total_requests": row["total_requests"],
-            "unique_ips": row["unique_ips"],
-            "errors": row["errors"],
+            "total_requests": total_reqs,
+            "unique_ips": unique_ips,
+            "errors": errors,
         }
 
     async def get_top_ips(self, limit: int):
@@ -121,80 +132,84 @@ class StatsService:
 
     async def _fetch_traffic(self, granularity: str, ip: str | None, limit: int, offset: int):
         unit = DATE_TRUNC_UNITS[granularity]
-        interval = INTERVAL_UNITS[granularity]
+        unit_delta = TIMEDELTA_UNITS[granularity]
         period_expr = self._period_expr(granularity, "l")
-        params: dict[str, object] = {
-            "start_mult": limit + offset - 1,
-            "end_mult": offset
-        }
-        where_clause_ip = ""
-        where_clause_ip_and = ""
-        if ip:
-            where_clause_ip = "WHERE l.ip LIKE :ip"
-            where_clause_ip_and = "AND l.ip LIKE :ip"
-            params["ip"] = f"%{ip}%"
+        
+        async with self.connection_factory() as session:
+            max_time_query = "SELECT time FROM logs "
+            max_time_params = {}
+            if ip:
+                max_time_query += "WHERE ip = :ip "
+                max_time_params["ip"] = ip
+            max_time_query += "ORDER BY time DESC LIMIT 1"
+            
+            max_time = await self.fetch_val(max_time_query, max_time_params, session=session)
+            if not max_time:
+                max_time = datetime.now(timezone.utc)
 
-        query = f"""
-            WITH bounds AS (
-                SELECT COALESCE(MAX(time), NOW()) AS max_time
+            start_time = max_time - (limit + offset - 1) * unit_delta
+            end_time = max_time - offset * unit_delta
+
+            params: dict[str, object] = {
+                "start_time": start_time,
+                "end_time": end_time,
+            }
+            where_clause_ip_and = ""
+            if ip:
+                where_clause_ip_and = "AND l.ip = :ip"
+                params["ip"] = ip
+
+            query = f"""
+                SELECT
+                    {period_expr} AS period,
+                    COUNT(*) AS count
                 FROM logs l
-                {where_clause_ip}
-            )
-            SELECT
-                {period_expr} AS period,
-                COUNT(*) AS count
-            FROM logs l
-            CROSS JOIN bounds
-            WHERE l.time >= bounds.max_time - (:start_mult * INTERVAL '{interval}')
-              AND l.time <= bounds.max_time - (:end_mult * INTERVAL '{interval}')
-              {where_clause_ip_and}
-            GROUP BY period
-            ORDER BY period
-        """
-        rows = await self.fetch_rows(query, params)
+                WHERE l.time >= :start_time
+                  AND l.time <= :end_time
+                  {where_clause_ip_and}
+                GROUP BY period
+                ORDER BY period
+            """
+            rows = await self.fetch_rows(query, params, session=session)
         return [{"period": row["period"], "count": row["count"]} for row in rows]
 
     async def get_anomalies(self):
         return await self._cached("anomalies", self._fetch_anomalies)
 
     async def _fetch_anomalies(self):
+        max_time_query = "SELECT time FROM logs ORDER BY time DESC LIMIT 1"
+        max_time = await self.fetch_val(max_time_query)
+        if not max_time:
+            max_time = datetime.now(timezone.utc)
+            
+        time_threshold = max_time - timedelta(hours=24)
+        params = {"time_threshold": time_threshold}
+
         async with self.connection_factory() as session:
             high_freq = await self.fetch_rows("""
-                WITH bounds AS (
-                    SELECT COALESCE(MAX(time), NOW()) AS max_time FROM logs
-                )
                 SELECT ip, to_char(date_trunc('minute', l.time), 'YYYY-MM-DD"T"HH24:MI') as minute, COUNT(*) as count
                 FROM logs l
-                CROSS JOIN bounds
-                WHERE l.time >= bounds.max_time - INTERVAL '24 hours'
+                WHERE l.time >= :time_threshold
                 GROUP BY ip, minute
                 HAVING COUNT(*) > 100
                 ORDER BY count DESC
-            """, session=session)
+            """, params, session=session)
 
             many_404 = await self.fetch_rows("""
-                WITH bounds AS (
-                    SELECT COALESCE(MAX(time), NOW()) AS max_time FROM logs
-                )
                 SELECT ip, COUNT(*) as count
                 FROM logs l
-                CROSS JOIN bounds
-                WHERE l.status = 404 AND l.time >= bounds.max_time - INTERVAL '24 hours'
+                WHERE l.status = 404 AND l.time >= :time_threshold
                 GROUP BY ip HAVING COUNT(*) > 20
                 ORDER BY count DESC
-            """, session=session)
+            """, params, session=session)
 
             many_500 = await self.fetch_rows("""
-                WITH bounds AS (
-                    SELECT COALESCE(MAX(time), NOW()) AS max_time FROM logs
-                )
                 SELECT ip, COUNT(*) as count
                 FROM logs l
-                CROSS JOIN bounds
-                WHERE l.status = 500 AND l.time >= bounds.max_time - INTERVAL '24 hours'
+                WHERE l.status = 500 AND l.time >= :time_threshold
                 GROUP BY ip HAVING COUNT(*) > 10
                 ORDER BY count DESC
-            """, session=session)
+            """, params, session=session)
 
         return {
             "high_frequency": [{"ip": row["ip"], "minute": row["minute"], "count": row["count"]} for row in high_freq],
@@ -210,40 +225,50 @@ class StatsService:
 
     async def _fetch_status_codes_over_time(self, granularity: str, limit: int, offset: int):
         unit = DATE_TRUNC_UNITS[granularity]
+        unit_delta = TIMEDELTA_UNITS[granularity]
         interval = INTERVAL_UNITS[granularity]
-        fmt = TO_CHAR_FORMATS[granularity]
-        rows = await self.fetch_rows(f"""
-            WITH bounds AS (
-                SELECT date_trunc('{unit}', COALESCE(MAX(time), NOW())) AS end_period
-                FROM logs
-            ),
-            periods AS (
-                SELECT generate_series(
-                    end_period - (:start_mult * INTERVAL '{interval}'),
-                    end_period - (:end_mult * INTERVAL '{interval}'),
-                    INTERVAL '{interval}'
-                ) AS period
-                FROM bounds
-            ),
-            counts AS (
+        
+        async with self.connection_factory() as session:
+            end_period = await self.fetch_val(f"SELECT date_trunc('{unit}', COALESCE(MAX(time), NOW())) FROM logs", session=session)
+            if not end_period:
+                end_period = datetime.now(timezone.utc)
+
+            start_time = end_period - (limit + offset - 1) * unit_delta
+            end_time_inclusive = end_period - offset * unit_delta
+            end_time_exclusive = end_time_inclusive + unit_delta
+
+            query = f"""
+                WITH periods AS (
+                    SELECT generate_series(
+                        CAST(:start_time AS timestamptz),
+                        CAST(:end_time_inclusive AS timestamptz),
+                        INTERVAL '{interval}'
+                    ) AS period
+                ),
+                counts AS (
+                    SELECT
+                        date_trunc('{unit}', l.time) AS period,
+                        l.status,
+                        COUNT(*) AS count
+                    FROM logs l
+                        WHERE l.time >= :start_time
+                          AND l.time < :end_time_exclusive
+                    GROUP BY period, l.status
+                )
                 SELECT
-                    date_trunc('{unit}', l.time) AS period,
-                    l.status,
-                    COUNT(*) AS count
-                FROM logs l
-                CROSS JOIN bounds
-                WHERE l.time >= bounds.end_period - (:start_mult * INTERVAL '{interval}')
-                  AND l.time < bounds.end_period - (:end_mult * INTERVAL '{interval}') + INTERVAL '{interval}'
-                GROUP BY period, l.status
-            )
-            SELECT
-                to_char(periods.period, '{fmt}') AS period,
-                counts.status,
-                COALESCE(counts.count, 0) AS count
-            FROM periods
-            LEFT JOIN counts ON counts.period = periods.period
-            ORDER BY periods.period, counts.status
-        """, {"start_mult": limit + offset - 1, "end_mult": offset})
+                    to_char(periods.period, 'YYYY-MM-DD"T"HH24') AS period,
+                    counts.status,
+                    COALESCE(counts.count, 0) AS count
+                FROM periods
+                LEFT JOIN counts ON counts.period = periods.period
+                ORDER BY periods.period, counts.status
+            """
+            params = {
+                "start_time": start_time,
+                "end_time_inclusive": end_time_inclusive,
+                "end_time_exclusive": end_time_exclusive
+            }
+            rows = await self.fetch_rows(query, params, session=session)
         grouped = {}
         all_statuses = set()
         for row in rows:
@@ -262,6 +287,10 @@ class StatsService:
         return {"labels": labels, "datasets": datasets}
 
     async def search_logs(self, ip, path, status, time_from, time_to, limit, offset=0):
+        if not time_from and not time_to:
+            from datetime import datetime, timedelta, timezone
+            time_from = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+            
         where_clauses = []
         params: dict[str, object] = {"limit": limit, "offset": offset}
         if ip:

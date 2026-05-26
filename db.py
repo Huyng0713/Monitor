@@ -3,7 +3,7 @@ import os
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, UniqueConstraint
+from sqlalchemy import DateTime, Integer, String, UniqueConstraint, Index
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -53,6 +53,7 @@ class LogRecord(Base):
     __tablename__ = "logs"
     __table_args__ = (
         UniqueConstraint("ip", "time", "method", "path", "status", name="uq_logs_identity"),
+        Index("ix_logs_time_status", "time", "status"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
