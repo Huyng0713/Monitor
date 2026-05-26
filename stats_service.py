@@ -95,10 +95,17 @@ class StatsService:
         return await self._cached("summary", self._fetch_summary)
 
     async def _fetch_summary(self):
-        async with self.connection_factory() as session:
-            total_reqs = await self.fetch_scalar("SELECT COUNT(*) FROM logs", session=session)
-            errors = await self.fetch_scalar("SELECT COUNT(*) FROM logs WHERE status >= 400", session=session)
-            unique_ips = await self.fetch_scalar("SELECT COUNT(DISTINCT ip) FROM logs", session=session)
+        async def get_total():
+            async with self.connection_factory() as session:
+                return await self.fetch_scalar("SELECT COUNT(*) FROM logs", session=session)
+        async def get_errors():
+            async with self.connection_factory() as session:
+                return await self.fetch_scalar("SELECT COUNT(*) FROM logs WHERE status >= 400", session=session)
+        async def get_ips():
+            async with self.connection_factory() as session:
+                return await self.fetch_scalar("SELECT COUNT(DISTINCT ip) FROM logs", session=session)
+
+        total_reqs, errors, unique_ips = await asyncio.gather(get_total(), get_errors(), get_ips())
         return {
             "total_requests": total_reqs,
             "unique_ips": unique_ips,
@@ -142,7 +149,6 @@ class StatsService:
     async def _fetch_traffic(self, granularity: str, ip: str | None, limit: int, offset: int):
         unit = DATE_TRUNC_UNITS[granularity]
         unit_delta = TIMEDELTA_UNITS[granularity]
-        period_expr = self._period_expr(granularity, "l")
         
         async with self.connection_factory() as session:
             if ip:
@@ -167,17 +173,33 @@ class StatsService:
 
             query = f"""
                 SELECT
-                    {period_expr} AS period,
+                    date_trunc('{unit}', l.time) AS period_raw,
                     COUNT(*) AS count
                 FROM logs l
                 WHERE l.time >= :start_time
                   AND l.time <= :end_time
                   {where_clause_ip_and}
-                GROUP BY period
-                ORDER BY period
+                GROUP BY 1
+                ORDER BY 1
             """
             rows = await self.fetch_rows(query, params, session=session)
-        return [{"period": row["period"], "count": row["count"]} for row in rows]
+
+        # Format period string in Python for faster performance
+        def format_period_py(dt: datetime, gran: str) -> str:
+            if gran == "minute":
+                return dt.strftime("%Y-%m-%dT%H:%M")
+            elif gran == "hour":
+                return dt.strftime("%Y-%m-%dT%H")
+            else: # day
+                return dt.strftime("%Y-%m-%d")
+
+        result = []
+        for row in rows:
+            p_raw = row["period_raw"]
+            if p_raw:
+                p_str = format_period_py(p_raw, granularity)
+                result.append({"period": p_str, "count": row["count"]})
+        return result
 
     async def get_anomalies(self):
         return await self._cached("anomalies", self._fetch_anomalies)
@@ -228,7 +250,6 @@ class StatsService:
     async def _fetch_status_codes_over_time(self, granularity: str, limit: int, offset: int):
         unit = DATE_TRUNC_UNITS[granularity]
         unit_delta = TIMEDELTA_UNITS[granularity]
-        interval = INTERVAL_UNITS[granularity]
         
         max_time = await self.get_max_time()
         if granularity == "day":
@@ -243,56 +264,58 @@ class StatsService:
         end_time_exclusive = end_time_inclusive + unit_delta
 
         query = f"""
-            WITH periods AS (
-                SELECT generate_series(
-                    CAST(:start_time AS timestamptz),
-                    CAST(:end_time_inclusive AS timestamptz),
-                    INTERVAL '{interval}'
-                ) AS period
-            ),
-            counts AS (
-                SELECT
-                    date_trunc('{unit}', l.time) AS period,
-                    l.status,
-                    COUNT(*) AS count
-                FROM logs l
-                    WHERE l.time >= :start_time
-                      AND l.time < :end_time_exclusive
-                GROUP BY period, l.status
-            )
             SELECT
-                to_char(periods.period, 'YYYY-MM-DD"T"HH24') AS period,
-                counts.status,
-                COALESCE(counts.count, 0) AS count
-            FROM periods
-            LEFT JOIN counts ON counts.period = periods.period
-            ORDER BY periods.period, counts.status
+                date_trunc('{unit}', l.time) AS period_raw,
+                l.status,
+                COUNT(*) AS count
+            FROM logs l
+            WHERE l.time >= :start_time
+              AND l.time < :end_time_exclusive
+            GROUP BY 1, 2
+            ORDER BY 1, 2
         """
         params = {
             "start_time": start_time,
-            "end_time_inclusive": end_time_inclusive,
             "end_time_exclusive": end_time_exclusive
         }
         async with self.connection_factory() as session:
             rows = await self.fetch_rows(query, params, session=session)
-        grouped = {}
+
+        # Map DB results by formatted period string and status
+        db_data = {}
         all_statuses = set()
         for row in rows:
-            period = row["period"]
-            grouped.setdefault(period, {})
-            if row["status"] is not None:
-                status = str(row["status"])
+            p_raw = row["period_raw"]
+            if p_raw:
+                # Format to YYYY-MM-DD"T"HH24 to match the expected frontend format
+                p_str = p_raw.strftime("%Y-%m-%dT%H")
+                status = str(row["status"]) if row["status"] is not None else "Unknown"
                 all_statuses.add(status)
-                grouped[period][status] = row["count"]
+                db_data.setdefault(p_str, {})[status] = row["count"]
 
-        labels = sorted(grouped.keys())
-        datasets = [
-            {"label": status, "data": [grouped[label].get(status, 0) for label in labels]}
-            for status in sorted(all_statuses)
-        ]
+        # Generate expected time periods list in Python
+        labels = []
+        for i in range(limit):
+            p = start_time + i * unit_delta
+            p_str = p.strftime("%Y-%m-%dT%H")
+            labels.append(p_str)
+
+        # Build datasets padded with 0 for missing intervals
+        datasets = []
+        for status in sorted(all_statuses):
+            status_data = []
+            for label in labels:
+                status_data.append(db_data.get(label, {}).get(status, 0))
+            datasets.append({
+                "label": status,
+                "data": status_data
+            })
+            
         return {"labels": labels, "datasets": datasets}
 
     async def search_logs(self, ip, path, status, time_from, time_to, limit, offset=0):
+        is_unfiltered = not ip and not path and status is None and not time_from and not time_to
+
         if not time_from and not time_to:
             from datetime import datetime, timedelta, timezone
             time_from = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
@@ -301,30 +324,54 @@ class StatsService:
         params: dict[str, object] = {"limit": limit, "offset": offset}
         if ip:
             where_clauses.append("ip LIKE :ip")
-            params["ip"] = f"%{ip}%"
+            params["ip"] = f"{ip}%"
         if path:
             where_clauses.append("path LIKE :path")
             params["path"] = f"%{path}%"
         if status is not None:
             where_clauses.append("status = :status")
             params["status"] = status
-        if time_from:
-            where_clauses.append("time >= :time_from")
-            params["time_from"] = self._parse_datetime(time_from)
-        if time_to:
-            where_clauses.append("time <= :time_to")
-            params["time_to"] = self._parse_datetime(time_to)
+        
+        # If we are unfiltered, we don't need a WHERE clause at all, which allows Postgres to scan instantly
+        if not is_unfiltered:
+            if time_from:
+                where_clauses.append("time >= :time_from")
+                params["time_from"] = self._parse_datetime(time_from)
+            if time_to:
+                where_clauses.append("time <= :time_to")
+                params["time_to"] = self._parse_datetime(time_to)
 
         where_sql = " AND ".join(where_clauses) or "1=1"
         count_params = {key: value for key, value in params.items() if key not in {"limit", "offset"}}
-        async with self.connection_factory() as session:
-            total = await self.fetch_scalar(f"SELECT COUNT(*) FROM logs WHERE {where_sql}", count_params, session=session)
-            rows = await self.fetch_rows(f"""
-                SELECT ip, time, method, path, status, size
-                FROM logs
-                WHERE {where_sql}
-                LIMIT :limit OFFSET :offset
-            """, params, session=session)
+
+        if is_unfiltered:
+            # For the default load/reset state, read the total count from the cached summary to save 2.8s
+            summary = await self.get_summary()
+            total = summary["total_requests"]
+            
+            async with self.connection_factory() as session:
+                rows = await self.fetch_rows(f"""
+                    SELECT ip, time, method, path, status, size
+                    FROM logs
+                    LIMIT :limit OFFSET :offset
+                """, params, session=session)
+        else:
+            # Run count and detail queries in parallel using concurrent database sessions
+            async def get_total():
+                async with self.connection_factory() as session:
+                    return await self.fetch_scalar(f"SELECT COUNT(*) FROM logs WHERE {where_sql}", count_params, session=session)
+            
+            async def get_rows():
+                async with self.connection_factory() as session:
+                    return await self.fetch_rows(f"""
+                        SELECT ip, time, method, path, status, size
+                        FROM logs
+                        WHERE {where_sql}
+                        LIMIT :limit OFFSET :offset
+                    """, params, session=session)
+            
+            total, rows = await asyncio.gather(get_total(), get_rows())
+
         return {
             "rows": [
                 {

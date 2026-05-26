@@ -84,6 +84,7 @@ def _engine_options() -> dict:
         "pool_recycle": 300,
         "connect_args": {
             "statement_cache_size": 0,
+            "prepared_statement_cache_size": 0,  # Disable prepared statements in SQLAlchemy dialect
         },
     }
     if IS_VERCEL:
