@@ -1143,7 +1143,7 @@
         loadTraffic(document.getElementById("traffic-ip-search").value.trim()),
         loadStatusCodes(document.querySelector(".range-btn.active").dataset.range),
         loadRightStats(),
-        loadSystemLogs()
+        loadSystemLogs(false)
       ]);
     }
 
@@ -1763,10 +1763,11 @@
       document.getElementById("search-pagination").innerHTML = "";
     }
 
-    async function loadSystemLogs() {
+    async function loadSystemLogs(reset = false) {
       const container = document.getElementById("system-logs");
       try {
-        const data = await fetchJson("/stats/logs");
+        const url = reset ? "/stats/logs?reset=true" : "/stats/logs";
+        const data = await fetchJson(url);
         
         if (!data.lines || data.lines.length === 0) {
           container.innerHTML = `<div class="terminal-row" style="color:var(--text-secondary);">No logs registered in system database.</div>`;
@@ -1821,7 +1822,7 @@
       loadTraffic();
       loadStatusCodes("hour");
       loadRightStats();
-      loadSystemLogs();
+      loadSystemLogs(true);
       runSearch(0);
     }
 

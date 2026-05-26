@@ -96,14 +96,10 @@ def json_cached(data):
 
 
 @app.get("/")
-async def index():
+def index():
     if not os.path.exists(INDEX_PATH):
         log_file_issue(logging.ERROR, "Frontend entry file missing: path=%s", INDEX_PATH)
         raise HTTPException(status_code=500, detail="Frontend entry file is missing")
-    try:
-        await stats_service.clear_system_logs()
-    except Exception:
-        log_exception("Failed to clear system logs on index load")
     return FileResponse(INDEX_PATH)
 
 
@@ -169,7 +165,15 @@ async def get_status_codes_over_time(
 
 
 @app.get("/stats/logs")
-async def get_system_logs(lines: int = Query(default=50, ge=1, le=500)):
+async def get_system_logs(
+    lines: int = Query(default=50, ge=1, le=500),
+    reset: bool = Query(default=False)
+):
+    if reset:
+        try:
+            await stats_service.clear_system_logs()
+        except Exception:
+            log_exception("Failed to clear system logs on request")
     try:
         db_logs = await stats_service.get_system_logs(lines)
         if db_logs:
