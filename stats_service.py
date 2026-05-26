@@ -33,7 +33,7 @@ class StatsService:
         self.connection_factory = connection_factory
         self._cache = {}
         self._cache_ttl = 120
-        self._cache_lock = asyncio.Lock()
+        self._locks = {}
 
     async def _cached(self, key, fn):
         now = time.time()
@@ -43,7 +43,9 @@ class StatsService:
             if now - ts < self._cache_ttl:
                 return value
 
-        async with self._cache_lock:
+        # Use a per-key lock to prevent deadlocks and allow concurrent execution of different stats
+        lock = self._locks.setdefault(key, asyncio.Lock())
+        async with lock:
             now = time.time()
             cached = self._cache.get(key)
             if cached:
