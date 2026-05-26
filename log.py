@@ -70,6 +70,8 @@ file_logger = _configure_logger(FILE_LOGGER_NAME, logging.INFO, FILE_LOG_PATH)
 
 
 def log_to_db(logger_name: str, level_name: str, message: str, traceback_str: str | None = None):
+    if level_name != "ERROR":
+        return
     try:
         loop = asyncio.get_running_loop()
         if loop.is_running():

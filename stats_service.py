@@ -80,6 +80,15 @@ class StatsService:
             result = await session_ctx.execute(text(query), params or {})
             return result.mappings().all()
 
+    async def get_max_time(self):
+        return await self._cached("max_time", self._fetch_max_time)
+
+    async def _fetch_max_time(self):
+        max_time = await self.fetch_val("SELECT MAX(time) FROM logs")
+        if not max_time:
+            return datetime.now(timezone.utc)
+        return max_time
+
     async def get_summary(self):
         return await self._cached("summary", self._fetch_summary)
 
@@ -134,16 +143,13 @@ class StatsService:
         period_expr = self._period_expr(granularity, "l")
         
         async with self.connection_factory() as session:
-            max_time_query = "SELECT time FROM logs "
-            max_time_params = {}
             if ip:
-                max_time_query += "WHERE ip = :ip "
-                max_time_params["ip"] = ip
-            max_time_query += "ORDER BY time DESC LIMIT 1"
-            
-            max_time = await self.fetch_val(max_time_query, max_time_params, session=session)
-            if not max_time:
-                max_time = datetime.now(timezone.utc)
+                max_time_query = "SELECT time FROM logs WHERE ip = :ip ORDER BY time DESC LIMIT 1"
+                max_time = await self.fetch_val(max_time_query, {"ip": ip}, session=session)
+                if not max_time:
+                    max_time = datetime.now(timezone.utc)
+            else:
+                max_time = await self.get_max_time()
 
             start_time = max_time - (limit + offset - 1) * unit_delta
             end_time = max_time - offset * unit_delta
@@ -175,11 +181,7 @@ class StatsService:
         return await self._cached("anomalies", self._fetch_anomalies)
 
     async def _fetch_anomalies(self):
-        max_time_query = "SELECT time FROM logs ORDER BY time DESC LIMIT 1"
-        max_time = await self.fetch_val(max_time_query)
-        if not max_time:
-            max_time = datetime.now(timezone.utc)
-            
+        max_time = await self.get_max_time()
         time_threshold = max_time - timedelta(hours=24)
         params = {"time_threshold": time_threshold}
 
@@ -226,46 +228,50 @@ class StatsService:
         unit_delta = TIMEDELTA_UNITS[granularity]
         interval = INTERVAL_UNITS[granularity]
         
-        async with self.connection_factory() as session:
-            end_period = await self.fetch_val(f"SELECT date_trunc('{unit}', COALESCE(MAX(time), NOW())) FROM logs", session=session)
-            if not end_period:
-                end_period = datetime.now(timezone.utc)
+        max_time = await self.get_max_time()
+        if granularity == "day":
+            end_period = max_time.replace(hour=0, minute=0, second=0, microsecond=0)
+        elif granularity == "hour":
+            end_period = max_time.replace(minute=0, second=0, microsecond=0)
+        else: # minute
+            end_period = max_time.replace(second=0, microsecond=0)
 
-            start_time = end_period - (limit + offset - 1) * unit_delta
-            end_time_inclusive = end_period - offset * unit_delta
-            end_time_exclusive = end_time_inclusive + unit_delta
+        start_time = end_period - (limit + offset - 1) * unit_delta
+        end_time_inclusive = end_period - offset * unit_delta
+        end_time_exclusive = end_time_inclusive + unit_delta
 
-            query = f"""
-                WITH periods AS (
-                    SELECT generate_series(
-                        CAST(:start_time AS timestamptz),
-                        CAST(:end_time_inclusive AS timestamptz),
-                        INTERVAL '{interval}'
-                    ) AS period
-                ),
-                counts AS (
-                    SELECT
-                        date_trunc('{unit}', l.time) AS period,
-                        l.status,
-                        COUNT(*) AS count
-                    FROM logs l
-                        WHERE l.time >= :start_time
-                          AND l.time < :end_time_exclusive
-                    GROUP BY period, l.status
-                )
+        query = f"""
+            WITH periods AS (
+                SELECT generate_series(
+                    CAST(:start_time AS timestamptz),
+                    CAST(:end_time_inclusive AS timestamptz),
+                    INTERVAL '{interval}'
+                ) AS period
+            ),
+            counts AS (
                 SELECT
-                    to_char(periods.period, 'YYYY-MM-DD"T"HH24') AS period,
-                    counts.status,
-                    COALESCE(counts.count, 0) AS count
-                FROM periods
-                LEFT JOIN counts ON counts.period = periods.period
-                ORDER BY periods.period, counts.status
-            """
-            params = {
-                "start_time": start_time,
-                "end_time_inclusive": end_time_inclusive,
-                "end_time_exclusive": end_time_exclusive
-            }
+                    date_trunc('{unit}', l.time) AS period,
+                    l.status,
+                    COUNT(*) AS count
+                FROM logs l
+                    WHERE l.time >= :start_time
+                      AND l.time < :end_time_exclusive
+                GROUP BY period, l.status
+            )
+            SELECT
+                to_char(periods.period, 'YYYY-MM-DD"T"HH24') AS period,
+                counts.status,
+                COALESCE(counts.count, 0) AS count
+            FROM periods
+            LEFT JOIN counts ON counts.period = periods.period
+            ORDER BY periods.period, counts.status
+        """
+        params = {
+            "start_time": start_time,
+            "end_time_inclusive": end_time_inclusive,
+            "end_time_exclusive": end_time_exclusive
+        }
+        async with self.connection_factory() as session:
             rows = await self.fetch_rows(query, params, session=session)
         grouped = {}
         all_statuses = set()
@@ -315,7 +321,6 @@ class StatsService:
                 SELECT ip, time, method, path, status, size
                 FROM logs
                 WHERE {where_sql}
-                ORDER BY time DESC
                 LIMIT :limit OFFSET :offset
             """, params, session=session)
         return {

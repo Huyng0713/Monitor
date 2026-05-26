@@ -604,6 +604,19 @@
         padding: 15px;
       }
     }
+
+    /* Skeleton Loading Animation */
+    @keyframes skeleton-loading {
+      0% { background-color: rgba(255, 255, 255, 0.05); }
+      50% { background-color: rgba(255, 255, 255, 0.12); }
+      100% { background-color: rgba(255, 255, 255, 0.05); }
+    }
+    .skeleton-line {
+      height: 16px;
+      border-radius: 4px;
+      animation: skeleton-loading 1.2s infinite ease-in-out;
+      width: 100%;
+    }
   </style>
 </head>
 
@@ -1441,9 +1454,8 @@
 
         const data = await fetchJson(`/stats/traffic?granularity=hour&limit=${limit}&offset=0&ip=${encodeURIComponent(ip)}`, { signal });
         
-        // Reverse because backend returns DESC (newest first), we want oldest first (left to right)
-        const chunkLabels = data.map(d => formatPeriod(d.period)).reverse();
-        const chunkCounts = data.map(d => Number(d.count) || 0).reverse();
+        const chunkLabels = data.map(d => formatPeriod(d.period));
+        const chunkCounts = data.map(d => Number(d.count) || 0);
 
         trafficChart.data.labels = chunkLabels;
         trafficChart.data.datasets[0].originalData = chunkCounts;
@@ -1505,8 +1517,7 @@
 
         const data = await fetchJson(`/stats/status-codes-over-time?granularity=${range}&limit=${limit}&offset=0`, { signal });
         
-        // Reverse arrays to display oldest first (left to right)
-        const chunkLabels = data.labels.map(l => formatPeriod(l)).reverse();
+        const chunkLabels = data.labels.map(l => formatPeriod(l));
         statusChart.data.labels = chunkLabels;
         
         // Prepare datasets
@@ -1514,7 +1525,7 @@
         data.datasets.forEach((ds, i) => {
           newDatasets.push({
             label: `Status ${ds.label}`,
-            originalData: ds.data.map(v => Number(v) || 0).reverse(),
+            originalData: ds.data.map(v => Number(v) || 0),
             data: [],
             borderColor: colors[i % colors.length],
             tension: 0.4, pointRadius: 0, pointHoverRadius: 6, borderWidth: 3, spanGaps: true
@@ -1682,7 +1693,17 @@
       if (to) params.set("time_to", to);
 
       try {
-        document.getElementById("search-results").innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);">Searching...</td></tr>`;
+        const skeletonRow = `
+          <tr>
+            <td><div class="skeleton-line" style="width: 100px;"></div></td>
+            <td><div class="skeleton-line" style="width: 140px;"></div></td>
+            <td><div class="skeleton-line" style="width: 50px;"></div></td>
+            <td><div class="skeleton-line" style="width: 260px;"></div></td>
+            <td><div class="skeleton-line" style="width: 40px;"></div></td>
+            <td><div class="skeleton-line" style="width: 60px;"></div></td>
+          </tr>
+        `;
+        document.getElementById("search-results").innerHTML = skeletonRow.repeat(6);
         const payload = await fetchJson(`/stats/search?${params.toString()}`);
         const data = payload.rows || [];
         const total = payload.total || 0;
