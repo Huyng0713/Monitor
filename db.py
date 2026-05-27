@@ -39,16 +39,27 @@ def normalize_database_url(url: str) -> str:
     except Exception:
         pass
 
-    if url.startswith("postgresql+asyncpg://"):
-        pass
-    elif url.startswith("postgresql+psycopg://"):
-        url = url.replace("postgresql+psycopg://", "postgresql+asyncpg://", 1)
-    elif url.startswith("postgresql://"):
-        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    elif url.startswith("postgres://"):
-        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+    # Detect if we should use CockroachDB dialect instead of PostgreSQL
+    is_cockroach = "cockroach" in url or "26257" in url or url.startswith("cockroachdb")
+
+    if is_cockroach:
+        for scheme in ["postgresql+asyncpg://", "postgresql+psycopg://", "postgresql://", "postgres://", "cockroachdb+asyncpg://", "cockroachdb://"]:
+            if url.startswith(scheme):
+                url = url.replace(scheme, "cockroachdb+asyncpg://", 1)
+                break
+    else:
+        if url.startswith("postgresql+asyncpg://"):
+            pass
+        elif url.startswith("postgresql+psycopg://"):
+            url = url.replace("postgresql+psycopg://", "postgresql+asyncpg://", 1)
+        elif url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        elif url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql+asyncpg://", 1)
         
-    if "postgresql+asyncpg://" in url and "prepared_statement_cache_size" not in url:
+    # Append statement cache options
+    target_dialect = "cockroachdb+asyncpg://" if is_cockroach else "postgresql+asyncpg://"
+    if target_dialect in url and "prepared_statement_cache_size" not in url:
         if "?" in url:
             url += "&prepared_statement_cache_size=0"
         else:
@@ -160,8 +171,8 @@ async def write_connection():
             raise
 
 
-async def init_db():
-    if not RUN_SCHEMA_CREATE:
+async def init_db(force=False):
+    if not force and not RUN_SCHEMA_CREATE:
         log_activity("Database runtime schema creation skipped")
         return
     try:
@@ -242,5 +253,5 @@ async def insert_system_log(logger: str, level: str, message: str, traceback: st
 
 
 if __name__ == "__main__":
-    asyncio.run(init_db())
+    asyncio.run(init_db(force=True))
     print("Database initialized successfully")
