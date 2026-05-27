@@ -1,6 +1,7 @@
 fastapi==0.116.1
-SQLAlchemy==2.0.41
+SQLAlchemy[asyncio]==2.0.41
 asyncpg==0.30.0
+sqlalchemy-cockroachdb==0.4.4
 alembic==1.16.2
 python-dotenv==1.1.1
 uvicorn==0.35.0
