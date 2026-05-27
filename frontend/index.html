@@ -415,6 +415,25 @@
       background: rgba(15, 23, 42, 0.2);
     }
 
+    /* Traffic chart scrollbar */
+    #traffic-scroll-outer {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(56, 189, 248, 0.35) transparent;
+    }
+    #traffic-scroll-outer::-webkit-scrollbar {
+      height: 5px;
+    }
+    #traffic-scroll-outer::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    #traffic-scroll-outer::-webkit-scrollbar-thumb {
+      background: rgba(56, 189, 248, 0.35);
+      border-radius: 4px;
+    }
+    #traffic-scroll-outer::-webkit-scrollbar-thumb:hover {
+      background: rgba(56, 189, 248, 0.6);
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
@@ -824,7 +843,12 @@
       </div>
       <div id="traffic-chart-container" class="chart-wrapper" style="height: 350px; position: relative; width: 100%;">
         <div class="chart-loader"></div>
-        <canvas id="trafficChart" style="height: 350px; width: 100%;"></canvas>
+        <!-- Scrollable wrapper: canvas grows to fit data, but container clips it -->
+        <div id="traffic-scroll-outer" style="overflow-x: auto; width: 100%; height: 350px;">
+          <div id="traffic-scroll-inner" style="height: 350px; min-width: 100%; position: relative;">
+            <canvas id="trafficChart" style="height: 350px;"></canvas>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1449,8 +1473,19 @@
         const chunkLabels = data.map(d => formatPeriod(d.period));
         const chunkCounts = data.map(d => Number(d.count) || 0);
 
+        // Dynamically size the canvas so each data point gets at least 60px
+        const MIN_PX_PER_POINT = 60;
+        const outerEl = document.getElementById('traffic-scroll-outer');
+        const innerEl = document.getElementById('traffic-scroll-inner');
+        const canvasEl = document.getElementById('trafficChart');
+        const minWidth = chunkLabels.length * MIN_PX_PER_POINT;
+        const outerWidth = outerEl ? outerEl.offsetWidth : 800;
+        const canvasWidth = Math.max(minWidth, outerWidth);
+        if (innerEl) innerEl.style.width = canvasWidth + 'px';
+        if (canvasEl) canvasEl.style.width = canvasWidth + 'px';
+
         if (!trafficChart) {
-          const ctx = document.getElementById("trafficChart").getContext("2d");
+          const ctx = canvasEl.getContext("2d");
           const gradient = ctx.createLinearGradient(0, 0, 0, 300);
           gradient.addColorStop(0, 'rgba(56, 189, 248, 0.25)');
           gradient.addColorStop(1, 'rgba(56, 189, 248, 0.00)');
@@ -1466,7 +1501,8 @@
               pointHoverBorderWidth: 2, borderWidth: 3,
             }]},
             options: {
-              responsive: true, maintainAspectRatio: false,
+              responsive: false,      // must be false so we control canvas size manually
+              maintainAspectRatio: false,
               interaction: { mode: "index", intersect: false },
               plugins: {
                 legend: { display: false },
@@ -1477,22 +1513,27 @@
                 }
               },
               scales: {
-                x: { ticks: { color: "#64748b", maxTicksLimit: 10 }, grid: { display: false } },
+                x: { ticks: { color: "#64748b", maxRotation: 45, autoSkip: true, autoSkipPadding: 20 }, grid: { display: false } },
                 y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } }
               }
             }
           });
         }
 
+        // Resize chart canvas to match computed width
+        trafficChart.canvas.style.width  = canvasWidth + 'px';
+        trafficChart.canvas.style.height = '350px';
+        trafficChart.resize(canvasWidth, 350);
+
         trafficChart.data.labels = chunkLabels;
         trafficChart.data.datasets[0].originalData = chunkCounts;
 
         const compressedTicks = buildCompressedTicks(Math.max(...trafficChart.data.datasets[0].originalData, 1));
         const newScaledData = useTrafficLogScale ? compressedData(trafficChart.data.datasets[0].originalData, compressedTicks) : trafficChart.data.datasets[0].originalData;
-        
+
         trafficChart.data.datasets[0].data = newScaledData;
         trafficChart.options.scales.y = useTrafficLogScale ? compressedAxisOptions(compressedTicks) : { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } };
-        trafficChart.update();
+        trafficChart.update('none'); // 'none' skips animation for instant resize
     }
 
     function toggleTrafficScale() {
