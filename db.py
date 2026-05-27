@@ -25,6 +25,20 @@ if not RAW_DATABASE_URL:
 
 
 def normalize_database_url(url: str) -> str:
+    from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
+    try:
+        parsed = urlparse(url)
+        if parsed.query:
+            params = dict(parse_qsl(parsed.query))
+            # Remove parameters not supported by asyncpg to prevent ValueError
+            params.pop("sslmode", None)
+            params.pop("sslrootcert", None)
+            new_query = urlencode(params)
+            parsed = parsed._replace(query=new_query)
+            url = urlunparse(parsed)
+    except Exception:
+        pass
+
     if url.startswith("postgresql+asyncpg://"):
         pass
     elif url.startswith("postgresql+psycopg://"):
@@ -88,13 +102,25 @@ class CachedStatRecord(Base):
 
 def _engine_options() -> dict:
     from uuid import uuid4
+    
+    # Configure SSL: load CockroachDB certificate context if it is CockroachDB and CA exists
+    if "cockroach" in DATABASE_URL or "26257" in DATABASE_URL:
+        cert_path = os.path.expanduser("~/.postgresql/root.crt")
+        if os.path.exists(cert_path):
+            import ssl
+            ssl_ctx = ssl.create_default_context(cafile=cert_path)
+        else:
+            ssl_ctx = "require"
+    else:
+        ssl_ctx = "require"
+
     options = {
         "pool_pre_ping": False,  # Disabled to save 400ms per checkout
         "pool_recycle": 300,
         "connect_args": {
             "statement_cache_size": 0,
             "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4()}__",
-            "ssl": "require",       # Supabase database requires or recommends SSL encryption
+            "ssl": ssl_ctx,
         },
     }
     if IS_VERCEL:
