@@ -802,15 +802,8 @@ class StatsService:
         where_clauses = []
 
         if ip:
-            if ip.count('.') == 3:
-                where_clauses.append("ip = :ip")
-                params["ip"] = ip
-            elif len(ip) >= 3:
-                where_clauses.append("ip LIKE :ip")
-                params["ip"] = f"{ip}%"
-            else:
-                where_clauses.append("ip = :ip")
-                params["ip"] = ip
+            where_clauses.append("ip LIKE :ip")
+            params["ip"] = f"%{ip}%"
 
         if path:
             clean_path = path.strip("/")
@@ -832,13 +825,10 @@ class StatsService:
             where_clauses.append("time <= :time_to")
             params["time_to"] = self._parse_datetime(time_to)
 
-        # Cursor condition: lấy các rows có (time, id) nhỏ hơn cursor
-        if cursor:
-            where_clauses.append(
-                "(time < :cursor_time OR (time = :cursor_time AND id < :cursor_id))"
-            )
-            params["cursor_time"] = self._parse_datetime(cursor)
-            params["cursor_id"] = cursor_id or 0
+        # Cursor condition: lấy các rows có id nhỏ hơn cursor_id (vì sắp xếp theo id DESC)
+        if cursor_id is not None:
+            where_clauses.append("id < :cursor_id")
+            params["cursor_id"] = cursor_id
 
         where_sql = " AND ".join(where_clauses) or "1=1"
 
@@ -846,7 +836,7 @@ class StatsService:
             SELECT id, ip, time, method, path, status, size
             FROM logs
             WHERE {where_sql}
-            ORDER BY time DESC, id DESC
+            ORDER BY id DESC
             LIMIT :limit
         """
 
