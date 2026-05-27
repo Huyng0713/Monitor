@@ -660,47 +660,38 @@ class StatsService:
             )
         return await self._search_logs_raw(ip, path, status, time_from, time_to, limit, offset)
 
+    async def _run_page_query(self, query: str, params: dict) -> list:
+        """Execute a paginated SELECT and return list of row mappings."""
+        async with self.connection_factory() as session:
+            result = await session.execute(text(query), params)
+            return result.mappings().all()
+
     async def _search_logs_raw(self, ip, path, status, time_from, time_to, limit, offset=0):
         is_unfiltered = not ip and not path and status is None and not time_from and not time_to
 
         params: dict[str, object] = {"limit": limit, "offset": offset}
         
         if is_unfiltered:
-            # Unfiltered query using Deferred Join with the fast pg_class estimate in a single roundtrip
-            query = """
-                WITH paginated_rows AS (
-                    SELECT l.id, l.ip, l.time, l.method, l.path, l.status, l.size
-                    FROM logs l
-                    JOIN (
-                        SELECT id
-                        FROM logs
-                        ORDER BY id DESC
-                        LIMIT :limit OFFSET :offset
-                    ) temp ON l.id = temp.id
-                    ORDER BY l.id DESC
-                ),
-                estimated_count AS (
-                    SELECT reltuples::bigint AS total FROM pg_class WHERE relname = 'logs'
-                ),
-                final_count AS (
-                    SELECT CASE 
-                        WHEN total <= 0 THEN (SELECT COUNT(*) FROM logs)
-                        ELSE total
-                    END AS total
-                    FROM estimated_count
-                )
-                SELECT 
-                    (SELECT total FROM final_count) AS total_count,
-                    (SELECT coalesce(json_agg(r), '[]'::json) FROM paginated_rows r) AS rows
+            # Unfiltered: run row fetch and total count in parallel.
+            # Total count is cached 60s so pagination stays instant.
+            page_query = """
+                SELECT l.id, l.ip, l.time, l.method, l.path, l.status, l.size
+                FROM logs l
+                JOIN (
+                    SELECT id FROM logs ORDER BY id DESC LIMIT :limit OFFSET :offset
+                ) temp ON l.id = temp.id
+                ORDER BY l.id DESC
             """
-            async with self.connection_factory() as session:
-                result = await session.execute(text(query), params)
-                row = result.mappings().one()
-                total = row["total_count"]
-                rows = row["rows"]
-                if isinstance(rows, str):
-                    import json
-                    rows = json.loads(rows)
+            async def _fetch_total():
+                async with self.connection_factory() as s:
+                    r = await s.execute(text("SELECT COUNT(*) FROM logs"))
+                    return r.scalar() or 0
+
+            total, rows_result = await asyncio.gather(
+                self.db_cached("search_count_unfiltered", _fetch_total, ttl=60),
+                self._run_page_query(page_query, params),
+            )
+            rows = rows_result
         else:
             where_clauses = []
             if ip:
@@ -758,17 +749,12 @@ class StatsService:
     async def search_logs_count(self, ip, path, status, time_from, time_to):
         is_unfiltered = not ip and not path and status is None and not time_from and not time_to
         if is_unfiltered:
-            query = """
-                SELECT CASE 
-                    WHEN reltuples::bigint <= 0 THEN (SELECT COUNT(*) FROM logs)
-                    ELSE reltuples::bigint
-                END AS total
-                FROM pg_class
-                WHERE relname = 'logs'
-            """
-            async with self.connection_factory() as session:
-                result = await session.execute(text(query))
-                return result.scalar() or 0
+            # CockroachDB-compatible: cache COUNT(*) for 60s to keep it fast
+            async def _count_all():
+                async with self.connection_factory() as session:
+                    result = await session.execute(text("SELECT COUNT(*) FROM logs"))
+                    return result.scalar() or 0
+            return await self.db_cached("search_count_unfiltered", _count_all, ttl=60)
 
         # Caching the count for filtered queries to make subsequent pagination instant
         cache_key = f"search_count:{ip or ''}:{path or ''}:{status or ''}:{time_from or ''}:{time_to or ''}"
