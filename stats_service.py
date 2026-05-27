@@ -787,6 +787,97 @@ class StatsService:
             result = await session.execute(text(query), params)
             return result.scalar() or 0
 
+    async def search_logs_keyset(
+        self,
+        ip: str | None,
+        path: str | None,
+        status: int | None,
+        time_from: str | None,
+        time_to: str | None,
+        limit: int,
+        cursor: str | None = None,
+        cursor_id: int | None = None,
+    ):
+        params: dict[str, object] = {"limit": limit}
+        where_clauses = []
+
+        if ip:
+            if ip.count('.') == 3:
+                where_clauses.append("ip = :ip")
+                params["ip"] = ip
+            elif len(ip) >= 3:
+                where_clauses.append("ip LIKE :ip")
+                params["ip"] = f"{ip}%"
+            else:
+                where_clauses.append("ip = :ip")
+                params["ip"] = ip
+
+        if path:
+            clean_path = path.strip("/")
+            if clean_path:
+                if len(clean_path) >= 2:
+                    where_clauses.append("path LIKE :path")
+                    params["path"] = f"%{path}%"
+                else:
+                    where_clauses.append("path = :path")
+                    params["path"] = path
+
+        if status is not None:
+            where_clauses.append("status = :status")
+            params["status"] = status
+        if time_from:
+            where_clauses.append("time >= :time_from")
+            params["time_from"] = self._parse_datetime(time_from)
+        if time_to:
+            where_clauses.append("time <= :time_to")
+            params["time_to"] = self._parse_datetime(time_to)
+
+        # Cursor condition: lấy các rows có (time, id) nhỏ hơn cursor
+        if cursor:
+            where_clauses.append(
+                "(time < :cursor_time OR (time = :cursor_time AND id < :cursor_id))"
+            )
+            params["cursor_time"] = self._parse_datetime(cursor)
+            params["cursor_id"] = cursor_id or 0
+
+        where_sql = " AND ".join(where_clauses) or "1=1"
+
+        query = f"""
+            SELECT id, ip, time, method, path, status, size
+            FROM logs
+            WHERE {where_sql}
+            ORDER BY time DESC, id DESC
+            LIMIT :limit
+        """
+
+        async with self.connection_factory() as session:
+            result = await session.execute(text(query), params)
+            rows = result.mappings().all()
+
+        if not rows:
+            return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
+
+        last = rows[-1]
+        next_cursor = last["time"].isoformat() if last["time"] else None
+        next_cursor_id = last["id"]
+
+        return {
+            "rows": [
+                {
+                    "ip": r["ip"],
+                    "time": r["time"].isoformat() if r["time"] else None,
+                    "method": r["method"],
+                    "path": r["path"],
+                    "status": r["status"],
+                    "size": r["size"],
+                }
+                for r in rows
+            ],
+            "next_cursor": next_cursor,
+            "next_cursor_id": next_cursor_id,
+            "has_more": len(rows) == limit,
+        }
+
     def _period_expr(self, granularity: str, table_alias: str | None = None) -> str:
         unit = DATE_TRUNC_UNITS[granularity]
         fmt = TO_CHAR_FORMATS[granularity]
@@ -794,6 +885,9 @@ class StatsService:
         return f"to_char(date_trunc('{unit}', {time_column}), '{fmt}')"
 
     def _parse_datetime(self, value: str) -> datetime:
+        # If url-decoding turned '+' into ' ', fix it for timezone offsets (e.g., " 00:00" -> "+00:00")
+        if len(value) > 6 and value[-6] == ' ' and value[-3] == ':':
+            value = value[:-6] + '+' + value[-5:]
         return datetime.fromisoformat(value)
 
     async def get_system_logs(self, limit: int):

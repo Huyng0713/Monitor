@@ -177,6 +177,25 @@ async def search_logs_count(
         raise HTTPException(status_code=400, detail="Invalid datetime format") from exc
 
 
+@app.get("/stats/search/keyset")
+async def search_logs_keyset(
+    ip: str = None,
+    path: str = None,
+    status: int = None,
+    time_from: str = None,
+    time_to: str = None,
+    limit: int = Query(default=15, ge=1, le=500),
+    cursor: str = None,       # ISO timestamp of the last row on the previous page
+    cursor_id: int = None,    # ID of the last row on the previous page
+):
+    try:
+        return await stats_service.search_logs_keyset(
+            ip, path, status, time_from, time_to, limit, cursor, cursor_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid datetime format") from exc
+
+
 @app.get("/stats/status-codes-over-time")
 async def get_status_codes_over_time(
     granularity: str = "hour",

@@ -962,6 +962,14 @@
     let useStatusLogScale = false;
     let useIpLogScale = false;
     
+    // Client-side cache for Top IPs to prevent re-fetching on scale toggle
+    let cachedTopIpsData = null;
+
+    // Keyset pagination cursors
+    let searchCursors = [null];
+    let searchCursorIds = [null];
+    let currentSearchPage = 0;
+
     // Cache anomaly listings
     let rateSpikesData = [];
     let scannersData = [];
@@ -1580,6 +1588,7 @@
       if (container) container.style.opacity = "0.4";
       try {
         const data = await fetchJson("/stats/top-ips?limit=8");
+        cachedTopIpsData = data;
         populateTopIPs(data);
       } catch (error) {
         renderPanelError("ip-chart-container", error.message, "loadTopIPs()");
@@ -1649,7 +1658,11 @@
     function toggleIpScale() {
       useIpLogScale = !useIpLogScale;
       setToggleState("ip-scale-toggle", useIpLogScale);
-      loadTopIPs();
+      if (cachedTopIpsData) {
+        populateTopIPs(cachedTopIpsData);
+      } else {
+        loadTopIPs();
+      }
     }
 
     async function loadRightStats() {
@@ -1736,21 +1749,30 @@
       const pageSize = numberInputValue("search-page-size", 15, 1, 500);
 
       if (from === null || to === null) {
-        document.getElementById("search-results").innerHTML = "";
-        document.getElementById("search-count").textContent = "Invalid date format. Use dd/mm/yyyy hh:mm.";
-        document.getElementById("search-pagination").innerHTML = "";
+        document.getElementById("search-count").textContent = "Invalid date format.";
         return;
+      }
+
+      // Reset cursor stack on new search (page = 0)
+      if (page === 0) {
+        searchCursors = [null];
+        searchCursorIds = [null];
       }
 
       const params = new URLSearchParams({
         limit: String(pageSize),
-        offset: String(page * pageSize),
       });
       if (ip) params.set("ip", ip);
       if (path) params.set("path", path);
       if (status) params.set("status", status);
       if (from) params.set("time_from", from);
       if (to) params.set("time_to", to);
+
+      // Pass cursor of current page if page > 0
+      const cursor = searchCursors[page] ?? null;
+      const cursorId = searchCursorIds[page] ?? null;
+      if (cursor) params.set("cursor", cursor);
+      if (cursorId) params.set("cursor_id", String(cursorId));
 
       try {
         const skeletonRow = `
@@ -1764,9 +1786,15 @@
           </tr>
         `;
         document.getElementById("search-results").innerHTML = skeletonRow.repeat(6);
-        const payload = await fetchJson(`/stats/search?${params.toString()}`);
+        const payload = await fetchJson(`/stats/search/keyset?${params.toString()}`);
         const data = payload.rows || [];
-        const statusColor = s => s >= 500 ? "var(--danger)" : s >= 400 ? "var(--warning)" : "var(--success)";
+        currentSearchPage = page;
+
+        // Store cursor of next page
+        if (payload.next_cursor && page + 1 >= searchCursors.length) {
+          searchCursors.push(payload.next_cursor);
+          searchCursorIds.push(payload.next_cursor_id);
+        }
 
         if (data.length === 0) {
           document.getElementById("search-results").innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);padding: 20px;">No matching records found</td></tr>`;
@@ -1775,6 +1803,7 @@
           return;
         }
 
+        const statusColor = s => s >= 500 ? "var(--danger)" : s >= 400 ? "var(--warning)" : "var(--success)";
         document.getElementById("search-results").innerHTML = data.map(r => `
           <tr>
             <td style="color:var(--primary); font-weight: 500;">${escapeHtml(r.ip)}</td>
@@ -1787,50 +1816,16 @@
         `).join("");
 
         const startIdx = (page * pageSize) + 1;
+        const endIdx = startIdx + data.length - 1;
+        document.getElementById("search-count").textContent = `Showing ${startIdx.toLocaleString()}–${endIdx.toLocaleString()} results`;
 
-        if (payload.total === null) {
-          // Filtered query: count is loading asynchronously
-          document.getElementById("search-count").textContent = `Showing ${startIdx.toLocaleString()}-${(startIdx + data.length - 1).toLocaleString()} of counting...`;
-          document.getElementById("search-pagination").innerHTML = `<span style="color:var(--text-secondary); font-size: 13px; opacity: 0.7;">Loading pages...</span>`;
-
-          const countParams = new URLSearchParams();
-          if (ip) countParams.set("ip", ip);
-          if (path) countParams.set("path", path);
-          if (status) countParams.set("status", status);
-          if (from) countParams.set("time_from", from);
-          if (to) countParams.set("time_to", to);
-
-          fetchJson(`/stats/search/count?${countParams.toString()}`)
-            .then(countPayload => {
-              const totalCount = countPayload.total || 0;
-              const totalPages = Math.max(Math.ceil(totalCount / pageSize), 1);
-              const endIdx = Math.min((page + 1) * pageSize, totalCount);
-              document.getElementById("search-count").textContent = `Showing ${startIdx.toLocaleString()}-${endIdx.toLocaleString()} of ${totalCount.toLocaleString()} results`;
-              
-              document.getElementById("search-pagination").innerHTML = totalPages <= 1 ? "" : `
-                <button onclick="runSearch(${page - 1})" ${page === 0 ? "disabled" : ""} class="btn-secondary" style="padding: 6px 12px; font-size: 13px; opacity:${page === 0 ? 0.4 : 1};">Prev</button>
-                <span style="color:var(--text-secondary); font-size: 13px;">Page ${page + 1} of ${totalPages}</span>
-                <button onclick="runSearch(${page + 1})" ${page >= totalPages - 1 ? "disabled" : ""} class="btn-secondary" style="padding: 6px 12px; font-size: 13px; opacity:${page >= totalPages - 1 ? 0.4 : 1};">Next</button>
-              `;
-            })
-            .catch(err => {
-              console.error("Failed to fetch search count:", err);
-              document.getElementById("search-count").textContent = `Showing ${startIdx.toLocaleString()}-${(startIdx + data.length - 1).toLocaleString()} results (count failed)`;
-              document.getElementById("search-pagination").innerHTML = "";
-            });
-        } else {
-          // Unfiltered query: total count already returned by estimate
-          const total = payload.total || 0;
-          const totalPages = Math.max(Math.ceil(total / pageSize), 1);
-          const endIdx = Math.min((page + 1) * pageSize, total);
-          document.getElementById("search-count").textContent = `Showing ${startIdx.toLocaleString()}-${endIdx.toLocaleString()} of ${total.toLocaleString()} results`;
-          
-          document.getElementById("search-pagination").innerHTML = totalPages <= 1 ? "" : `
-            <button onclick="runSearch(${page - 1})" ${page === 0 ? "disabled" : ""} class="btn-secondary" style="padding: 6px 12px; font-size: 13px; opacity:${page === 0 ? 0.4 : 1};">Prev</button>
-            <span style="color:var(--text-secondary); font-size: 13px;">Page ${page + 1} of ${totalPages}</span>
-            <button onclick="runSearch(${page + 1})" ${page >= totalPages - 1 ? "disabled" : ""} class="btn-secondary" style="padding: 6px 12px; font-size: 13px; opacity:${page >= totalPages - 1 ? 0.4 : 1};">Next</button>
-          `;
-        }
+        const hasPrev = page > 0;
+        const hasNext = payload.has_more;
+        document.getElementById("search-pagination").innerHTML = `
+          ${hasPrev ? `<button onclick="runSearch(${page - 1})" class="btn-secondary" style="padding: 6px 12px; font-size: 13px;">Prev</button>` : ""}
+          <span style="color:var(--text-secondary); font-size: 13px;">Page ${page + 1}</span>
+          ${hasNext ? `<button onclick="runSearch(${page + 1})" class="btn-secondary" style="padding: 6px 12px; font-size: 13px;">Next</button>` : ""}
+        `;
       } catch (error) {
         renderPanelError("search-results", error.message);
         document.getElementById("search-count").textContent = "";
@@ -1852,6 +1847,9 @@
       clearSearchField("search-status");
       clearSearchField("search-from");
       clearSearchField("search-to");
+      searchCursors = [null];
+      searchCursorIds = [null];
+      currentSearchPage = 0;
       document.getElementById("search-results").innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);">Enter search criteria or click search to browse all logs.</td></tr>`;
       document.getElementById("search-count").textContent = "";
       document.getElementById("search-pagination").innerHTML = "";
