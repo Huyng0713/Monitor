@@ -666,13 +666,18 @@ class StatsService:
         params: dict[str, object] = {"limit": limit, "offset": offset}
         
         if is_unfiltered:
-            # Unfiltered query using the fast pg_class estimate with count fallback in a single roundtrip
+            # Unfiltered query using Deferred Join with the fast pg_class estimate in a single roundtrip
             query = """
                 WITH paginated_rows AS (
-                    SELECT ip, time, method, path, status, size
-                    FROM logs
-                    ORDER BY time DESC
-                    LIMIT :limit OFFSET :offset
+                    SELECT l.id, l.ip, l.time, l.method, l.path, l.status, l.size
+                    FROM logs l
+                    JOIN (
+                        SELECT id
+                        FROM logs
+                        ORDER BY id DESC
+                        LIMIT :limit OFFSET :offset
+                    ) temp ON l.id = temp.id
+                    ORDER BY l.id DESC
                 ),
                 estimated_count AS (
                     SELECT reltuples::bigint AS total FROM pg_class WHERE relname = 'logs'
@@ -700,7 +705,7 @@ class StatsService:
             where_clauses = []
             if ip:
                 where_clauses.append("ip LIKE :ip")
-                params["ip"] = f"{ip}%"
+                params["ip"] = f"%{ip}%"
             if path:
                 where_clauses.append("path LIKE :path")
                 params["path"] = f"%{path}%"
@@ -717,14 +722,18 @@ class StatsService:
 
             where_sql = " AND ".join(where_clauses) or "1=1"
 
-            # Filtered query - retrieves only the requested page of rows, ordered by time DESC.
-            # No COUNT(*) calculated here, ensuring it runs instantly.
+            # Filtered query - retrieves only the requested page of rows using Deferred Join ordered by id DESC
             query = f"""
-                SELECT ip, time, method, path, status, size
-                FROM logs
-                WHERE {where_sql}
-                ORDER BY time DESC
-                LIMIT :limit OFFSET :offset
+                SELECT l.id, l.ip, l.time, l.method, l.path, l.status, l.size
+                FROM logs l
+                JOIN (
+                    SELECT id
+                    FROM logs
+                    WHERE {where_sql}
+                    ORDER BY id DESC
+                    LIMIT :limit OFFSET :offset
+                ) temp ON l.id = temp.id
+                ORDER BY l.id DESC
             """
             async with self.connection_factory() as session:
                 result = await session.execute(text(query), params)
@@ -761,11 +770,20 @@ class StatsService:
                 result = await session.execute(text(query))
                 return result.scalar() or 0
 
+        # Caching the count for filtered queries to make subsequent pagination instant
+        cache_key = f"search_count:{ip or ''}:{path or ''}:{status or ''}:{time_from or ''}:{time_to or ''}"
+        return await self.db_cached(
+            cache_key,
+            lambda: self._fetch_search_count_raw(ip, path, status, time_from, time_to),
+            ttl=120
+        )
+
+    async def _fetch_search_count_raw(self, ip, path, status, time_from, time_to):
         params = {}
         where_clauses = []
         if ip:
             where_clauses.append("ip LIKE :ip")
-            params["ip"] = f"{ip}%"
+            params["ip"] = f"%{ip}%"
         if path:
             where_clauses.append("path LIKE :path")
             params["path"] = f"%{path}%"
