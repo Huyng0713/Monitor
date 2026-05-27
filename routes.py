@@ -4,7 +4,7 @@ import time
 from collections import deque
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -139,8 +139,10 @@ async def get_anomalies():
 
 
 @app.get("/stats/dashboard")
-async def get_dashboard():
-    return json_cached(await stats_service.get_dashboard_data())
+async def get_dashboard(background_tasks: BackgroundTasks):
+    data = await stats_service.get_dashboard_data()
+    background_tasks.add_task(stats_service._precompute_granularities)
+    return json_cached(data)
 
 
 @app.get("/stats/search")

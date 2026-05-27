@@ -120,3 +120,30 @@ def get_log_paths() -> Dict[str, str]:
         "error": ERROR_LOG_PATH,
         "file": FILE_LOG_PATH,
     }
+
+
+def _add_stdout_handler(logger: logging.Logger, level: int) -> None:
+    """Add StreamHandler to stdout for Vercel logging collection."""
+    import sys
+    if any(
+        isinstance(h, logging.StreamHandler) and getattr(h, "stream", None) is sys.stdout
+        for h in logger.handlers
+    ):
+        return  # Already configured, don't duplicate
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(level)
+    handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s [%(levelname)s] %(name)s %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    )
+    logger.addHandler(handler)
+
+
+IS_VERCEL = os.getenv("VERCEL") == "1"
+if IS_VERCEL:
+    _add_stdout_handler(app_logger, logging.INFO)
+    _add_stdout_handler(error_logger, logging.ERROR)
+    _add_stdout_handler(file_logger, logging.WARNING)
+

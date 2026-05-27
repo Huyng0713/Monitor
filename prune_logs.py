@@ -3,7 +3,7 @@ import sys
 from sqlalchemy import text
 
 # Import database connection utilities from project
-from db import init_db, write_connection, engine
+from db import init_db, write_connection, write_engine as engine
 from stats_service import StatsService
 
 async def main():

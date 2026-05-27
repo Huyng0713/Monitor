@@ -94,10 +94,12 @@ def _engine_options() -> dict:
         "connect_args": {
             "statement_cache_size": 0,
             "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4()}__",
+            "ssl": "require",       # Supabase database requires or recommends SSL encryption
         },
     }
     if IS_VERCEL:
         options.update({"poolclass": NullPool})
+        options["connect_args"]["command_timeout"] = 8  # Timeout only on Vercel
     else:
         options.update({"pool_size": 5, "max_overflow": 10, "pool_timeout": 30})
     return options

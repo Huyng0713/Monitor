@@ -32,7 +32,7 @@ class StatsService:
     def __init__(self, connection_factory=read_connection):
         self.connection_factory = connection_factory
         self._cache = {}
-        self._cache_ttl = 120
+        self._cache_ttl = 300
         self._locks = {}
 
     async def _cached(self, key, fn):
@@ -56,7 +56,7 @@ class StatsService:
             self._cache[key] = (result, now)
             return result
 
-    async def db_cached(self, key, fetch_fn, ttl=120, force_refresh=False):
+    async def db_cached(self, key, fetch_fn, ttl=300, force_refresh=False):
         now = time.time()
         cached_in_mem = self._cache.get(key)
         if cached_in_mem and not force_refresh:
@@ -125,10 +125,6 @@ class StatsService:
                 from log import log_exception
                 log_exception(f"Failed to write cached_stat {key} to DB")
 
-            # Pre-cache popular granularity variants after cold-start dashboard compute
-            if key == "dashboard":
-                asyncio.create_task(self._precompute_granularities())
-
             return result
 
     async def _refresh_stat_in_db(self, key, fetch_fn):
@@ -149,9 +145,6 @@ class StatsService:
                         ON CONFLICT (key) DO UPDATE 
                         SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at
                     """), {"key": key, "value": serialized})
-            # Pre-cache popular granularity variants when dashboard is refreshed
-            if key == "dashboard":
-                asyncio.create_task(self._precompute_granularities())
         except Exception:
             from log import log_exception
             log_exception(f"Failed to refresh cached_stat {key} in background")
