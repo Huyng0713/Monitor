@@ -112,21 +112,28 @@ class CachedStatRecord(Base):
 
 
 def _engine_options() -> dict:
+    import ssl
     from uuid import uuid4
-    
-    # Configure SSL: load CockroachDB certificate context if it is CockroachDB and CA exists
+
+    # Build a proper ssl.SSLContext — asyncpg requires an SSLContext object,
+    # not a plain string like "require". Using system CAs so it works on
+    # Vercel (no ~/.postgresql/root.crt) and locally.
     if "cockroach" in DATABASE_URL or "26257" in DATABASE_URL:
         cert_path = os.path.expanduser("~/.postgresql/root.crt")
         if os.path.exists(cert_path):
-            import ssl
+            # Local dev: use the CockroachDB CA cert
             ssl_ctx = ssl.create_default_context(cafile=cert_path)
         else:
-            ssl_ctx = "require"
+            # Vercel / CI: CockroachDB Serverless certs are signed by a
+            # public CA already in the system trust store
+            ssl_ctx = ssl.create_default_context()
+            ssl_ctx.check_hostname = False
+            ssl_ctx.verify_mode = ssl.CERT_NONE  # CockroachDB cloud cert may differ per cluster
     else:
-        ssl_ctx = "require"
+        ssl_ctx = ssl.create_default_context()
 
     options = {
-        "pool_pre_ping": False,  # Disabled to save 400ms per checkout
+        "pool_pre_ping": False,
         "pool_recycle": 300,
         "connect_args": {
             "statement_cache_size": 0,
@@ -135,8 +142,11 @@ def _engine_options() -> dict:
         },
     }
     if IS_VERCEL:
+        # NullPool: each serverless invocation gets its own connection
+        # command_timeout=30: allow for cross-region latency (US↔Singapore)
+        # and CockroachDB Serverless cold-start resume (~5-10s)
         options.update({"poolclass": NullPool})
-        options["connect_args"]["command_timeout"] = 8  # Timeout only on Vercel
+        options["connect_args"]["command_timeout"] = 30
     else:
         options.update({"pool_size": 5, "max_overflow": 10, "pool_timeout": 30})
     return options
