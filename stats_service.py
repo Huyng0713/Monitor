@@ -833,11 +833,16 @@ class StatsService:
         where_sql = " AND ".join(where_clauses) or "1=1"
 
         query = f"""
-            SELECT id, ip, time, method, path, status, size
-            FROM logs
-            WHERE {where_sql}
-            ORDER BY id DESC
-            LIMIT :limit
+            SELECT l.id, l.ip, l.time, l.method, l.path, l.status, l.size
+            FROM logs l
+            JOIN (
+                SELECT id
+                FROM logs
+                WHERE {where_sql}
+                ORDER BY id DESC
+                LIMIT :limit
+            ) temp ON l.id = temp.id
+            ORDER BY l.id DESC
         """
 
         async with self.connection_factory() as session:
