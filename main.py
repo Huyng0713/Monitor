@@ -9,3 +9,4 @@ if __name__ == "__main__":
     except Exception:
         log_exception("Uvicorn server terminated unexpectedly")
         raise
+

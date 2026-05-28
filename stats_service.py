@@ -65,7 +65,6 @@ class StatsService:
             if now - ts < self._cache_ttl:
                 return value
 
-        # Use a per-key lock to prevent deadlocks and allow concurrent execution of different stats
         lock = self._locks.setdefault(key, asyncio.Lock())
         async with lock:
             now = time.time()
@@ -109,7 +108,6 @@ class StatsService:
         else:
             db_age = 9999999
 
-        # Stale-While-Revalidate: always return stale value if we have it, and refresh in background if expired
         if db_val is not None and not force_refresh:
             parsed_val = json.loads(db_val)
             self._cache[key] = (parsed_val, now)
@@ -117,7 +115,6 @@ class StatsService:
                 asyncio.create_task(self._refresh_stat_in_db(key, fetch_fn))
             return parsed_val
 
-        # Cold start/hard refresh: compute synchronously
         lock = self._locks.setdefault(key, asyncio.Lock())
         async with lock:
             cached_in_mem = self._cache.get(key)
@@ -171,7 +168,6 @@ class StatsService:
             log_exception(f"Failed to refresh cached_stat {key} in background")
 
     async def _precompute_granularities(self):
-        """Pre-compute and cache day/minute/hour granularity data and default search so switching is instant."""
         import json
         from db import write_connection
 
@@ -190,19 +186,16 @@ class StatsService:
 
         try:
             for gran in ["hour", "day", "minute"]:
-                # Status codes over time
                 key = f"status_over_time:{gran}:48:0"
                 if key not in self._cache:
                     result = await self._fetch_status_codes_over_time(gran, 48, 0)
                     await _store(key, result)
 
-                # Traffic
                 key = f"traffic:{gran}::48:0"
                 if key not in self._cache:
                     result = await self._fetch_traffic(gran, None, 48, 0)
                     await _store(key, result)
 
-            # Default search
             search_key = "search:default:15"
             if search_key not in self._cache:
                 result = await self._search_logs_raw(None, None, None, None, None, 15, 0)
@@ -218,7 +211,7 @@ class StatsService:
                 await session.execute(text("TRUNCATE system_logs"))
         await self._write_with_retry(_write_op)
 
-    async def fetch_scalar(self, query: str, params: dict | None = None, session = None) -> int:
+    async def fetch_scalar(self, query: str, params: dict | None = None, session=None) -> int:
         async def _op():
             if session:
                 result = await session.execute(text(query), params or {})
@@ -230,7 +223,7 @@ class StatsService:
             return int(value or 0)
         return await self._execute_with_retry(_op)
 
-    async def fetch_val(self, query: str, params: dict | None = None, session = None):
+    async def fetch_val(self, query: str, params: dict | None = None, session=None):
         async def _op():
             if session:
                 result = await session.execute(text(query), params or {})
@@ -240,7 +233,7 @@ class StatsService:
                 return result.scalar()
         return await self._execute_with_retry(_op)
 
-    async def fetch_rows(self, query: str, params: dict | None = None, session = None):
+    async def fetch_rows(self, query: str, params: dict | None = None, session=None):
         async def _op():
             if session:
                 result = await session.execute(text(query), params or {})
@@ -326,7 +319,7 @@ class StatsService:
     async def _fetch_traffic(self, granularity: str, ip: str | None, limit: int, offset: int):
         unit = DATE_TRUNC_UNITS[granularity]
         unit_delta = TIMEDELTA_UNITS[granularity]
-        
+
         if ip:
             max_time_query = "SELECT time FROM logs WHERE ip = :ip ORDER BY time DESC LIMIT 1"
             max_time = await self.fetch_val(max_time_query, {"ip": ip})
@@ -360,13 +353,12 @@ class StatsService:
         """
         rows = await self.fetch_rows(query, params)
 
-        # Format period string in Python for faster performance
         def format_period_py(dt: datetime, gran: str) -> str:
             if gran == "minute":
                 return dt.strftime("%Y-%m-%dT%H:%M")
             elif gran == "hour":
                 return dt.strftime("%Y-%m-%dT%H")
-            else: # day
+            else:
                 return dt.strftime("%Y-%m-%d")
 
         result = []
@@ -422,7 +414,7 @@ class StatsService:
         high_freq = row["high_frequency"]
         many_404 = row["many_404s"]
         many_500 = row["many_500s"]
-        
+
         if isinstance(high_freq, str):
             high_freq = json.loads(high_freq)
         if isinstance(many_404, str):
@@ -557,7 +549,6 @@ class StatsService:
         """
         raw_result = await self.fetch_val(query)
 
-        # Format status_over_time in Python to labels/datasets format
         max_time_str = raw_result.get("max_time")
         if max_time_str:
             max_time = datetime.fromisoformat(max_time_str)
@@ -612,13 +603,13 @@ class StatsService:
     async def _fetch_status_codes_over_time(self, granularity: str, limit: int, offset: int):
         unit = DATE_TRUNC_UNITS[granularity]
         unit_delta = TIMEDELTA_UNITS[granularity]
-        
+
         max_time = await self.get_max_time()
         if granularity == "day":
             end_period = max_time.replace(hour=0, minute=0, second=0, microsecond=0)
         elif granularity == "hour":
             end_period = max_time.replace(minute=0, second=0, microsecond=0)
-        else: # minute
+        else:
             end_period = max_time.replace(second=0, microsecond=0)
 
         start_time = end_period - (limit + offset - 1) * unit_delta
@@ -642,26 +633,22 @@ class StatsService:
         }
         rows = await self.fetch_rows(query, params)
 
-        # Map DB results by formatted period string and status
         db_data = {}
         all_statuses = set()
         for row in rows:
             p_raw = row["period_raw"]
             if p_raw:
-                # Format to YYYY-MM-DD"T"HH24 to match the expected frontend format
                 p_str = p_raw.strftime("%Y-%m-%dT%H")
                 status = str(row["status"]) if row["status"] is not None else "Unknown"
                 all_statuses.add(status)
                 db_data.setdefault(p_str, {})[status] = row["count"]
 
-        # Generate expected time periods list in Python
         labels = []
         for i in range(limit):
             p = start_time + i * unit_delta
             p_str = p.strftime("%Y-%m-%dT%H")
             labels.append(p_str)
 
-        # Build datasets padded with 0 for missing intervals
         datasets = []
         for status in sorted(all_statuses):
             status_data = []
@@ -671,13 +658,12 @@ class StatsService:
                 "label": status,
                 "data": status_data
             })
-            
+
         return {"labels": labels, "datasets": datasets}
 
     async def search_logs(self, ip, path, status, time_from, time_to, limit, offset=0):
         is_unfiltered = not ip and not path and status is None and not time_from and not time_to
 
-        # Cache the default unfiltered page-0 search result
         if is_unfiltered and offset == 0:
             return await self.db_cached(
                 f"search:default:{limit}",
@@ -686,17 +672,14 @@ class StatsService:
         return await self._search_logs_raw(ip, path, status, time_from, time_to, limit, offset)
 
     async def _run_page_query(self, query: str, params: dict) -> list:
-        """Execute a paginated SELECT and return list of row mappings."""
         return await self.fetch_rows(query, params)
 
     async def _search_logs_raw(self, ip, path, status, time_from, time_to, limit, offset=0):
         is_unfiltered = not ip and not path and status is None and not time_from and not time_to
 
         params: dict[str, object] = {"limit": limit, "offset": offset}
-        
+
         if is_unfiltered:
-            # Unfiltered: run row fetch and total count in parallel.
-            # Total count is cached 60s so pagination stays instant.
             page_query = """
                 SELECT l.id, l.ip, l.time, l.method, l.path, l.status, l.size
                 FROM logs l
@@ -705,6 +688,7 @@ class StatsService:
                 ) temp ON l.id = temp.id
                 ORDER BY l.id DESC
             """
+
             async def _fetch_total():
                 return await self.fetch_scalar("SELECT COUNT(*) FROM logs")
 
@@ -715,16 +699,21 @@ class StatsService:
             rows = rows_result
         else:
             where_clauses = []
+
+            # IP search: dùng trigram index — hỗ trợ LIKE '%x%' trên 7M rows
             if ip:
                 where_clauses.append("ip LIKE :ip")
                 params["ip"] = f"%{ip}%"
+
+            # Path search: dùng trigram index — hỗ trợ LIKE '%x%' trên 7M rows
             if path:
                 where_clauses.append("path LIKE :path")
                 params["path"] = f"%{path}%"
+
             if status is not None:
                 where_clauses.append("status = :status")
                 params["status"] = status
-            
+
             if time_from:
                 where_clauses.append("time >= :time_from")
                 params["time_from"] = self._parse_datetime(time_from)
@@ -734,7 +723,6 @@ class StatsService:
 
             where_sql = " AND ".join(where_clauses) or "1=1"
 
-            # Filtered query - retrieves only the requested page of rows using Deferred Join ordered by id DESC
             query = f"""
                 SELECT l.id, l.ip, l.time, l.method, l.path, l.status, l.size
                 FROM logs l
@@ -748,7 +736,7 @@ class StatsService:
                 ORDER BY l.id DESC
             """
             rows = await self.fetch_rows(query, params)
-            total = None  # Frontend will request count asynchronously
+            total = None
 
         return {
             "rows": [
@@ -768,12 +756,10 @@ class StatsService:
     async def search_logs_count(self, ip, path, status, time_from, time_to):
         is_unfiltered = not ip and not path and status is None and not time_from and not time_to
         if is_unfiltered:
-            # CockroachDB-compatible: cache COUNT(*) for 60s to keep it fast
             async def _count_all():
                 return await self.fetch_scalar("SELECT COUNT(*) FROM logs")
             return await self.db_cached("search_count_unfiltered", _count_all, ttl=60)
 
-        # Caching the count for filtered queries to make subsequent pagination instant
         cache_key = f"search_count:{ip or ''}:{path or ''}:{status or ''}:{time_from or ''}:{time_to or ''}"
         return await self.db_cached(
             cache_key,
@@ -784,6 +770,7 @@ class StatsService:
     async def _fetch_search_count_raw(self, ip, path, status, time_from, time_to):
         params = {}
         where_clauses = []
+
         if ip:
             where_clauses.append("ip LIKE :ip")
             params["ip"] = f"%{ip}%"
@@ -793,7 +780,6 @@ class StatsService:
         if status is not None:
             where_clauses.append("status = :status")
             params["status"] = status
-        
         if time_from:
             where_clauses.append("time >= :time_from")
             params["time_from"] = self._parse_datetime(time_from)
@@ -803,7 +789,7 @@ class StatsService:
 
         where_sql = " AND ".join(where_clauses) or "1=1"
         query = f"SELECT COUNT(*) FROM logs WHERE {where_sql}"
-        
+
         return await self.fetch_scalar(query, params)
 
     async def search_logs_keyset(
@@ -825,14 +811,8 @@ class StatsService:
             params["ip"] = f"%{ip}%"
 
         if path:
-            clean_path = path.strip("/")
-            if clean_path:
-                if len(clean_path) >= 2:
-                    where_clauses.append("path LIKE :path")
-                    params["path"] = f"%{path}%"
-                else:
-                    where_clauses.append("path = :path")
-                    params["path"] = path
+            where_clauses.append("path LIKE :path")
+            params["path"] = f"%{path}%"
 
         if status is not None:
             where_clauses.append("status = :status")
@@ -844,7 +824,6 @@ class StatsService:
             where_clauses.append("time <= :time_to")
             params["time_to"] = self._parse_datetime(time_to)
 
-        # Cursor condition: lấy các rows có id nhỏ hơn cursor_id (vì sắp xếp theo id DESC)
         if cursor_id is not None:
             where_clauses.append("id < :cursor_id")
             params["cursor_id"] = cursor_id
@@ -900,26 +879,18 @@ class StatsService:
         time_from: str | None = None,
         time_to: str | None = None,
     ):
-        """
-        Tìm id của row đầu tiên ở page N mà không dùng OFFSET lớn.
-        Dùng keyset pagination kết hợp đảo chiều quét chỉ mục để đạt tốc độ tối đa.
-        """
         offset = page * page_size
 
-        # Unfiltered: dùng id trực tiếp (nhanh nhất)
         if not ip and not path and status is None and not time_from and not time_to:
             async def _fetch_total():
                 return await self.fetch_scalar("SELECT COUNT(*) FROM logs")
-            
-            # Lấy total_count từ cache (60s TTL)
+
             total_count = await self.db_cached("search_count_unfiltered", _fetch_total, ttl=60)
-            
+
             if offset >= total_count:
                 return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
 
-            # Tối ưu hóa hướng quét chỉ mục để tránh scan sâu (CockroachDB offset anti-pattern)
             if offset > total_count / 2:
-                # Quét từ dưới lên (ASC) để lấy offset nhỏ hơn
                 reverse_offset = total_count - offset - 1
                 if reverse_offset < 0:
                     reverse_offset = 0
@@ -930,35 +901,31 @@ class StatsService:
                 """
                 params = {"reverse_offset": reverse_offset}
             else:
-                # Quét từ trên xuống (DESC)
                 query = """
                     SELECT id FROM logs
                     ORDER BY id DESC
                     LIMIT 1 OFFSET :offset
                 """
                 params = {"offset": offset}
-                
+
             target_id = await self.fetch_val(query, params)
             if target_id is None:
                 return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
-            
-            # Fetch page từ target_id
+
             return await self.search_logs_keyset(
                 ip=None, path=None, status=None,
                 time_from=None, time_to=None,
                 limit=page_size,
-                cursor_id=target_id + 1,  # +1 vì keyset dùng id < cursor_id
+                cursor_id=target_id + 1,
             )
 
-        # Filtered: không còn cách nào khác ngoài OFFSET
-        # Nhưng giới hạn không cho jump quá xa
         MAX_FILTERED_OFFSET = 10_000
         if offset > MAX_FILTERED_OFFSET:
             raise ValueError(
                 f"Cannot jump past page {MAX_FILTERED_OFFSET // page_size} "
                 f"with active filters. Remove filters to jump further."
             )
-        
+
         return await self._search_logs_raw(
             ip, path, status, time_from, time_to, page_size, offset
         )
@@ -970,7 +937,6 @@ class StatsService:
         return f"to_char(date_trunc('{unit}', {time_column}), '{fmt}')"
 
     def _parse_datetime(self, value: str) -> datetime:
-        # If url-decoding turned '+' into ' ', fix it for timezone offsets (e.g., " 00:00" -> "+00:00")
         if len(value) > 6 and value[-6] == ' ' and value[-3] == ':':
             value = value[:-6] + '+' + value[-5:]
         return datetime.fromisoformat(value)

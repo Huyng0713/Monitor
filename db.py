@@ -30,7 +30,6 @@ def normalize_database_url(url: str) -> str:
         parsed = urlparse(url)
         if parsed.query:
             params = dict(parse_qsl(parsed.query))
-            # Remove parameters not supported by asyncpg to prevent ValueError
             params.pop("sslmode", None)
             params.pop("sslrootcert", None)
             new_query = urlencode(params)
@@ -39,7 +38,6 @@ def normalize_database_url(url: str) -> str:
     except Exception:
         pass
 
-    # Detect if we should use CockroachDB dialect instead of PostgreSQL
     is_cockroach = "cockroach" in url or "26257" in url or url.startswith("cockroachdb")
 
     if is_cockroach:
@@ -56,8 +54,7 @@ def normalize_database_url(url: str) -> str:
             url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
         elif url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql+asyncpg://", 1)
-        
-    # Append statement cache options
+
     target_dialect = "cockroachdb+asyncpg://" if is_cockroach else "postgresql+asyncpg://"
     if target_dialect in url and "prepared_statement_cache_size" not in url:
         if "?" in url:
@@ -77,13 +74,30 @@ class Base(DeclarativeBase):
 class LogRecord(Base):
     __tablename__ = "logs"
     __table_args__ = (
+        # Giữ nguyên method trong constraint — tránh risk duplicate trên 7M rows
         UniqueConstraint("ip", "time", "method", "path", "status", name="uq_logs_identity"),
+
+        # Composite index cho traffic và anomalies (query theo time range + status)
         Index("ix_logs_time_status", "time", "status"),
+
+        # Index cho GROUP BY ip (Top IPs query)
+        Index("ix_logs_ip", "ip"),
+
+        # Index cho GROUP BY path (Top URLs query)
+        Index("ix_logs_path", "path"),
+
+        # Index cho filter theo status đơn lẻ
+        Index("ix_logs_status", "status"),
+
+        # Trigram indexes — tạo qua migration vì SQLAlchemy không hỗ trợ GIN trigram syntax
+        # CREATE INDEX ix_logs_ip_trgm ON logs USING GIN (ip gin_trgm_ops)
+        # CREATE INDEX ix_logs_path_trgm ON logs USING GIN (path gin_trgm_ops)
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     ip: Mapped[str] = mapped_column(String, nullable=False)
-    time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    # Bỏ index=True — đã có ix_logs_time_status covering time
+    time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     method: Mapped[str | None] = mapped_column(String, nullable=True)
     path: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -115,20 +129,14 @@ def _engine_options() -> dict:
     import ssl
     from uuid import uuid4
 
-    # Build a proper ssl.SSLContext — asyncpg requires an SSLContext object,
-    # not a plain string like "require". Using system CAs so it works on
-    # Vercel (no ~/.postgresql/root.crt) and locally.
     if "cockroach" in DATABASE_URL or "26257" in DATABASE_URL:
         cert_path = os.path.expanduser("~/.postgresql/root.crt")
         if os.path.exists(cert_path):
-            # Local dev: use the CockroachDB CA cert
             ssl_ctx = ssl.create_default_context(cafile=cert_path)
         else:
-            # Vercel / CI: CockroachDB Serverless certs are signed by a
-            # public CA already in the system trust store
             ssl_ctx = ssl.create_default_context()
             ssl_ctx.check_hostname = False
-            ssl_ctx.verify_mode = ssl.CERT_NONE  # CockroachDB cloud cert may differ per cluster
+            ssl_ctx.verify_mode = ssl.CERT_NONE
     else:
         ssl_ctx = ssl.create_default_context()
 
@@ -142,9 +150,6 @@ def _engine_options() -> dict:
         },
     }
     if IS_VERCEL:
-        # NullPool: each serverless invocation gets its own connection
-        # command_timeout=120: allow for cross-region latency (US↔Singapore)
-        # and CockroachDB Serverless cold-start resume (~5-10s)
         options.update({"poolclass": NullPool})
         options["connect_args"]["command_timeout"] = 120
     else:
@@ -215,6 +220,7 @@ def _entry_to_row(entry: LogEntry) -> dict:
 async def insert_entry(entry: LogEntry):
     async with write_connection() as session:
         statement = pg_insert(LogRecord).values(_entry_to_row(entry))
+        # Giữ nguyên method trong on_conflict khớp với UniqueConstraint
         statement = statement.on_conflict_do_nothing(index_elements=["ip", "time", "method", "path", "status"])
         await session.execute(statement)
 
@@ -229,6 +235,7 @@ async def insert_many(entries):
             return 0
         async with write_connection() as session:
             statement = pg_insert(LogRecord).values(rows)
+            # Giữ nguyên method trong on_conflict khớp với UniqueConstraint
             statement = statement.on_conflict_do_nothing(index_elements=["ip", "time", "method", "path", "status"])
             result = await session.execute(statement)
         return result.rowcount if result.rowcount is not None and result.rowcount >= 0 else 0
