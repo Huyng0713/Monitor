@@ -37,7 +37,7 @@
     body {
       font-family: 'Outfit', sans-serif;
       background-color: var(--bg-primary);
-      background-image: 
+      background-image:
         radial-gradient(circle at 10% 20%, rgba(129, 140, 248, 0.08) 0%, transparent 45%),
         radial-gradient(circle at 90% 80%, rgba(56, 189, 248, 0.08) 0%, transparent 45%);
       background-attachment: fixed;
@@ -52,13 +52,16 @@
       width: 8px;
       height: 8px;
     }
+
     ::-webkit-scrollbar-track {
       background: rgba(15, 23, 42, 0.3);
     }
+
     ::-webkit-scrollbar-thumb {
       background: rgba(255, 255, 255, 0.1);
       border-radius: 4px;
     }
+
     ::-webkit-scrollbar-thumb:hover {
       background: rgba(255, 255, 255, 0.2);
     }
@@ -131,9 +134,17 @@
     }
 
     @keyframes live-pulse {
-      0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-      70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
-      100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+      0% {
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+      }
+
+      70% {
+        box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+      }
+
+      100% {
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+      }
     }
 
     /* Chart Loading Spinner */
@@ -151,18 +162,20 @@
       z-index: 10;
       display: none;
     }
-    
+
     .chart-wrapper.loading .chart-loader {
       display: block;
     }
-    
+
     .chart-wrapper.loading canvas {
       opacity: 0.3 !important;
       transition: opacity 0.3s;
     }
-    
+
     @keyframes spin {
-      to { transform: translate(-50%, -50%) rotate(360deg); }
+      to {
+        transform: translate(-50%, -50%) rotate(360deg);
+      }
     }
 
     /* Live Countdown Progress Bar */
@@ -192,7 +205,9 @@
       margin-bottom: 30px;
     }
 
-    .card, .chart-card, .search-card {
+    .card,
+    .chart-card,
+    .search-card {
       background: var(--card-bg);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
@@ -204,7 +219,9 @@
       position: relative;
     }
 
-    .card:hover, .chart-card:hover, .search-card:hover {
+    .card:hover,
+    .chart-card:hover,
+    .search-card:hover {
       transform: translateY(-4px);
       border-color: rgba(56, 189, 248, 0.25);
       box-shadow: 0 15px 40px -10px rgba(0, 0, 0, 0.6), 0 0 15px 0 rgba(56, 189, 248, 0.05);
@@ -255,7 +272,8 @@
       grid-column: span 2;
     }
 
-    .chart-card h2, .search-card h2 {
+    .chart-card h2,
+    .search-card h2 {
       font-size: 18px;
       font-weight: 600;
       color: var(--text-primary);
@@ -271,7 +289,10 @@
       gap: 6px;
     }
 
-    .range-btn, .toggle-btn, .btn-primary, .btn-secondary {
+    .range-btn,
+    .toggle-btn,
+    .btn-primary,
+    .btn-secondary {
       background: rgba(255, 255, 255, 0.06);
       border: 1px solid rgba(255, 255, 255, 0.04);
       color: var(--text-primary);
@@ -287,12 +308,15 @@
       gap: 6px;
     }
 
-    .range-btn:hover, .toggle-btn:hover, .btn-secondary:hover {
+    .range-btn:hover,
+    .toggle-btn:hover,
+    .btn-secondary:hover {
       background: rgba(255, 255, 255, 0.12);
       border-color: rgba(255, 255, 255, 0.1);
     }
 
-    .range-btn.active, .toggle-btn.active {
+    .range-btn.active,
+    .toggle-btn.active {
       background: var(--primary);
       color: #040815;
       font-weight: 600;
@@ -420,16 +444,20 @@
       scrollbar-width: thin;
       scrollbar-color: rgba(56, 189, 248, 0.35) transparent;
     }
+
     #traffic-scroll-outer::-webkit-scrollbar {
       height: 5px;
     }
+
     #traffic-scroll-outer::-webkit-scrollbar-track {
       background: transparent;
     }
+
     #traffic-scroll-outer::-webkit-scrollbar-thumb {
       background: rgba(56, 189, 248, 0.35);
       border-radius: 4px;
     }
+
     #traffic-scroll-outer::-webkit-scrollbar-thumb:hover {
       background: rgba(56, 189, 248, 0.6);
     }
@@ -439,16 +467,20 @@
       scrollbar-width: thin;
       scrollbar-color: rgba(16, 185, 129, 0.35) transparent;
     }
+
     #status-scroll-outer::-webkit-scrollbar {
       height: 5px;
     }
+
     #status-scroll-outer::-webkit-scrollbar-track {
       background: transparent;
     }
+
     #status-scroll-outer::-webkit-scrollbar-thumb {
       background: rgba(16, 185, 129, 0.35);
       border-radius: 4px;
     }
+
     #status-scroll-outer::-webkit-scrollbar-thumb:hover {
       background: rgba(16, 185, 129, 0.6);
     }
@@ -548,10 +580,12 @@
         transform: scale(0.9);
         box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5);
       }
+
       70% {
         transform: scale(1);
         box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
       }
+
       100% {
         transform: scale(0.9);
         box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
@@ -586,9 +620,18 @@
       height: 12px;
       border-radius: 50%;
     }
-    .terminal-dot.red { background: #ef4444; }
-    .terminal-dot.yellow { background: #eab308; }
-    .terminal-dot.green { background: #22c55e; }
+
+    .terminal-dot.red {
+      background: #ef4444;
+    }
+
+    .terminal-dot.yellow {
+      background: #eab308;
+    }
+
+    .terminal-dot.green {
+      background: #22c55e;
+    }
 
     .terminal-title {
       font-size: 13px;
@@ -617,6 +660,7 @@
       .summary {
         grid-template-columns: repeat(2, 1fr);
       }
+
       .search-toolbar {
         grid-template-columns: repeat(3, minmax(0, 1fr));
       }
@@ -626,6 +670,7 @@
       .grid {
         grid-template-columns: 1fr;
       }
+
       .full-width {
         grid-column: span 1;
       }
@@ -635,25 +680,79 @@
       .summary {
         grid-template-columns: 1fr;
       }
+
       .search-toolbar {
         grid-template-columns: 1fr;
       }
+
       body {
         padding: 15px;
       }
     }
 
     /* Skeleton Loading Animation */
-    @keyframes skeleton-loading {
-      0% { background-color: rgba(255, 255, 255, 0.05); }
-      50% { background-color: rgba(255, 255, 255, 0.12); }
-      100% { background-color: rgba(255, 255, 255, 0.05); }
+    @keyframes skeleton-shimmer {
+      0% {
+        background-position: -200% 0;
+      }
+
+      100% {
+        background-position: 200% 0;
+      }
     }
+
     .skeleton-line {
+      display: inline-block;
       height: 16px;
       border-radius: 4px;
-      animation: skeleton-loading 1.2s infinite ease-in-out;
+      background: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 25%, rgba(255, 255, 255, 0.12) 50%, rgba(255, 255, 255, 0.04) 75%);
+      background-size: 200% 100%;
+      animation: skeleton-shimmer 1.5s infinite linear;
       width: 100%;
+    }
+
+    .reload-btn {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 16px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+
+    .reload-btn:hover {
+      color: var(--primary);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg);
+      }
+
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
+    .spinning {
+      animation: spin 1s linear infinite !important;
+      display: inline-block;
+    }
+
+    /* Chart Skeleton Placement */
+    .chart-wrapper.loading .skeleton-chart-placeholder {
+      display: flex !important;
+    }
+
+    .chart-wrapper.loading canvas {
+      display: none !important;
     }
   </style>
 </head>
@@ -665,23 +764,27 @@
       <p></p>
     </div>
     <div class="header-controls">
-      <button id="live-toggle" class="toggle-btn" onclick="toggleLiveMode()">
-        <span class="live-indicator"></span>
-        <span>Live: OFF</span>
-      </button>
       <div class="db-status">
         <span class="dot"></span>
-        <span>Supabase Connected</span>
+        <span>Connected</span>
       </div>
     </div>
   </header>
 
-  <!-- Live Countdown Progress Bar -->
-  <div id="live-progress-container">
-    <div id="live-progress-bar"></div>
-  </div>
-
   <!-- Summary & Health Cards -->
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <h2
+      style="font-size: 18px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 8px; margin-bottom: 0;">
+      <svg style="width:20px;height:20px;color:var(--primary);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M4 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z">
+        </path>
+      </svg>
+      Summary Overview
+    </h2>
+    <button class="reload-btn" id="reload-btn-summary" onclick="reloadPanel('summary')"
+      title="Reload Summary">🔄</button>
+  </div>
   <div class="summary">
     <div class="card">
       <div class="value" id="total-requests">...</div>
@@ -707,16 +810,20 @@
       <div class="threat-title">
         <h2 style="color: var(--danger); font-size: 20px; display: inline-flex; align-items: center; gap: 10px;">
           <span class="pulse-indicator"></span> THREAT & ANOMALY DETECTION
+          <button class="reload-btn" id="reload-btn-anomalies" onclick="reloadPanel('anomalies')"
+            title="Reload Anomalies" style="color: var(--danger); font-size: 14px;">🔄</button>
         </h2>
-        <p style="color: var(--text-secondary); font-size: 13px; margin-top: 4px;">Potential issues or scanner patterns flagged over the last 24 hours.</p>
+        <p style="color: var(--text-secondary); font-size: 13px; margin-top: 4px;">Potential issues or scanner patterns
+          flagged over the last 24 hours.</p>
       </div>
       <div class="threat-tabs">
         <button id="tab-rate" class="threat-tab-btn active" onclick="switchThreatTab('rate')">Request Spikes</button>
-        <button id="tab-scanners" class="threat-tab-btn" onclick="switchThreatTab('scanners')">404 Directory Scanners</button>
+        <button id="tab-scanners" class="threat-tab-btn" onclick="switchThreatTab('scanners')">404 Directory
+          Scanners</button>
         <button id="tab-errors" class="threat-tab-btn" onclick="switchThreatTab('errors')">500 Server Errors</button>
       </div>
     </div>
-    
+
     <div class="threat-content">
       <!-- Tab 1: Rate Spikes -->
       <div id="threat-rate-panel" class="threat-tab-panel active">
@@ -731,13 +838,15 @@
               </tr>
             </thead>
             <tbody id="anomaly-rate-list">
-              <tr><td colspan="4" style="text-align:center;color:var(--text-secondary);">Loading...</td></tr>
+              <tr>
+                <td colspan="4" style="text-align:center;color:var(--text-secondary);">Loading...</td>
+              </tr>
             </tbody>
           </table>
         </div>
         <div id="rate-pagination" style="display:flex; align-items:center; gap:12px; margin-top:12px;"></div>
       </div>
-      
+
       <!-- Tab 2: 404 Scanners -->
       <div id="threat-scanners-panel" class="threat-tab-panel">
         <div class="table-container">
@@ -750,13 +859,15 @@
               </tr>
             </thead>
             <tbody id="anomaly-scanner-list">
-              <tr><td colspan="3" style="text-align:center;color:var(--text-secondary);">Loading...</td></tr>
+              <tr>
+                <td colspan="3" style="text-align:center;color:var(--text-secondary);">Loading...</td>
+              </tr>
             </tbody>
           </table>
         </div>
         <div id="scanner-pagination" style="display:flex; align-items:center; gap:12px; margin-top:12px;"></div>
       </div>
-      
+
       <!-- Tab 3: 500 Error Triggers -->
       <div id="threat-errors-panel" class="threat-tab-panel">
         <div class="table-container">
@@ -769,7 +880,9 @@
               </tr>
             </thead>
             <tbody id="anomaly-error-list">
-              <tr><td colspan="3" style="text-align:center;color:var(--text-secondary);">Loading...</td></tr>
+              <tr>
+                <td colspan="3" style="text-align:center;color:var(--text-secondary);">Loading...</td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -781,7 +894,10 @@
   <!-- Search Card -->
   <div class="search-card full-width" style="margin-bottom: 24px;">
     <h2>
-      <svg style="width:20px;height:20px;color:var(--primary);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+      <svg style="width:20px;height:20px;color:var(--primary);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+      </svg>
       Search Log Database
     </h2>
     <div class="search-toolbar">
@@ -815,7 +931,8 @@
         <button class="search-clear" onclick="clearSearchField('search-to')" title="Clear date">×</button>
       </div>
       <div class="search-control" style="width: 80px;">
-        <input id="search-page-size" class="search-field" type="number" value="15" min="1" max="500" title="Results page size" style="padding-right: 5px;">
+        <input id="search-page-size" class="search-field" type="number" value="15" min="1" max="500"
+          title="Results page size" style="padding-right: 5px;">
       </div>
       <div class="btn-group">
         <button class="btn-primary" onclick="runSearch(0)">Search</button>
@@ -836,11 +953,15 @@
           </tr>
         </thead>
         <tbody id="search-results">
-          <tr><td colspan="6" style="text-align:center;color:var(--text-secondary);">Enter search criteria or click search to browse all logs.</td></tr>
+          <tr>
+            <td colspan="6" style="text-align:center;color:var(--text-secondary);">Enter search criteria or click search
+              to browse all logs.</td>
+          </tr>
         </tbody>
       </table>
     </div>
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; flex-wrap:wrap; gap:12px;">
+    <div
+      style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; flex-wrap:wrap; gap:12px;">
       <p id="search-count" style="color: var(--text-secondary); font-size:13px;"></p>
       <div id="search-pagination" style="display:flex; align-items:center; gap:8px;"></div>
     </div>
@@ -850,18 +971,42 @@
   <div class="grid">
     <!-- Traffic Chart -->
     <div class="chart-card full-width">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
+      <div
+        style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
         <h2>
-          <svg style="width:20px;height:20px;color:var(--primary);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+          <svg style="width:20px;height:20px;color:var(--primary);" fill="none" stroke="currentColor"
+            viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6">
+            </path>
+          </svg>
           Traffic Speed (Requests / Hour)
+          <button class="reload-btn" id="reload-btn-traffic" onclick="reloadPanel('traffic')"
+            title="Reload Traffic">🔄</button>
         </h2>
         <div style="display:flex; gap:8px; align-items:center;">
-          <input id="traffic-ip-search" type="text" placeholder="Filter by IP..." class="search-field" style="width:180px; height:36px; font-size:13px;">
-          <button id="traffic-scale-toggle" class="toggle-btn" onclick="toggleTrafficScale()" style="height:36px; padding:0 12px; font-size:13px;">Log Scale</button>
+          <input id="traffic-ip-search" type="text" placeholder="Filter by IP..." class="search-field"
+            style="width:180px; height:36px; font-size:13px;">
+          <button id="traffic-scale-toggle" class="toggle-btn" onclick="toggleTrafficScale()"
+            style="height:36px; padding:0 12px; font-size:13px;">Log Scale</button>
         </div>
       </div>
       <div id="traffic-chart-container" class="chart-wrapper" style="height: 350px; position: relative; width: 100%;">
         <div class="chart-loader"></div>
+        <div class="skeleton-chart-placeholder"
+          style="position: absolute; inset: 0; display: none; flex-direction: column; justify-content: flex-end; padding: 20px; gap: 15px; z-index: 5;">
+          <div style="display: flex; align-items: flex-end; height: 100%; gap: 10px; width: 100%;">
+            <div class="skeleton-line" style="height: 40%; width: 8%;"></div>
+            <div class="skeleton-line" style="height: 65%; width: 8%;"></div>
+            <div class="skeleton-line" style="height: 50%; width: 8%;"></div>
+            <div class="skeleton-line" style="height: 85%; width: 8%;"></div>
+            <div class="skeleton-line" style="height: 30%; width: 8%;"></div>
+            <div class="skeleton-line" style="height: 75%; width: 8%;"></div>
+            <div class="skeleton-line" style="height: 90%; width: 8%;"></div>
+            <div class="skeleton-line" style="height: 55%; width: 8%;"></div>
+            <div class="skeleton-line" style="height: 70%; width: 8%;"></div>
+            <div class="skeleton-line" style="height: 45%; width: 8%;"></div>
+          </div>
+        </div>
         <!-- Scrollable wrapper: canvas grows to fit data, but container clips it -->
         <div id="traffic-scroll-outer" style="overflow-x: auto; width: 100%; height: 350px;">
           <div id="traffic-scroll-inner" style="height: 350px; min-width: 100%; position: relative;">
@@ -873,10 +1018,18 @@
 
     <!-- Status Codes Chart -->
     <div class="chart-card full-width">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
+      <div
+        style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
         <h2>
-          <svg style="width:20px;height:20px;color:var(--accent);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+          <svg style="width:20px;height:20px;color:var(--accent);" fill="none" stroke="currentColor"
+            viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z">
+            </path>
+          </svg>
           Status Codes Over Time
+          <button class="reload-btn" id="reload-btn-status_codes" onclick="reloadPanel('status_codes')"
+            title="Reload Status Codes">🔄</button>
         </h2>
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
           <div class="btn-group">
@@ -884,18 +1037,36 @@
             <button class="range-btn active" data-range="hour" style="padding: 6px 12px; font-size: 13px;">Hour</button>
             <button class="range-btn" data-range="day" style="padding: 6px 12px; font-size: 13px;">Day</button>
           </div>
-          <input id="status-limit" type="number" value="48" min="5" max="500" class="search-field" style="width:70px; height:34px; font-size:13px; padding:0 8px;">
+          <input id="status-limit" type="number" value="48" min="5" max="500" class="search-field"
+            style="width:70px; height:34px; font-size:13px; padding:0 8px;">
           <span id="status-limit-unit" style="color:var(--text-secondary); font-size:13px;">hours</span>
-          <button id="scale-toggle" class="toggle-btn" onclick="toggleStatusScale()" style="height:34px; padding:0 12px; font-size:13px;">Log Scale</button>
+          <button id="scale-toggle" class="toggle-btn" onclick="toggleStatusScale()"
+            style="height:34px; padding:0 12px; font-size:13px;">Log Scale</button>
         </div>
       </div>
       <!-- Fixed legend: outside scroll so it never moves -->
-      <div id="status-legend" style="display:flex; flex-wrap:wrap; gap:8px 16px; margin-bottom:12px; min-height:22px;"></div>
+      <div id="status-legend" style="display:flex; flex-wrap:wrap; gap:8px 16px; margin-bottom:12px; min-height:22px;">
+      </div>
       <!-- Scroll outer -->
       <div id="status-scroll-outer" style="overflow-x: auto; width: 100%; height: 370px;">
         <div id="status-scroll-inner" style="height: 370px; min-width: 100%; position: relative;">
           <div id="statusChartWrapper" class="chart-wrapper" style="height: 350px; position: relative;">
             <div class="chart-loader"></div>
+            <div class="skeleton-chart-placeholder"
+              style="position: absolute; inset: 0; display: none; flex-direction: column; justify-content: flex-end; padding: 20px; gap: 15px; z-index: 5;">
+              <div style="display: flex; align-items: flex-end; height: 100%; gap: 10px; width: 100%;">
+                <div class="skeleton-line" style="height: 50%; width: 8%;"></div>
+                <div class="skeleton-line" style="height: 30%; width: 8%;"></div>
+                <div class="skeleton-line" style="height: 75%; width: 8%;"></div>
+                <div class="skeleton-line" style="height: 40%; width: 8%;"></div>
+                <div class="skeleton-line" style="height: 60%; width: 8%;"></div>
+                <div class="skeleton-line" style="height: 85%; width: 8%;"></div>
+                <div class="skeleton-line" style="height: 45%; width: 8%;"></div>
+                <div class="skeleton-line" style="height: 90%; width: 8%;"></div>
+                <div class="skeleton-line" style="height: 55%; width: 8%;"></div>
+                <div class="skeleton-line" style="height: 70%; width: 8%;"></div>
+              </div>
+            </div>
             <canvas id="statusChart" style="height: 350px;"></canvas>
           </div>
         </div>
@@ -906,25 +1077,51 @@
     <div class="chart-card">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
         <h2>
-          <svg style="width:20px;height:20px;color:var(--primary);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+          <svg style="width:20px;height:20px;color:var(--primary);" fill="none" stroke="currentColor"
+            viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z">
+            </path>
+          </svg>
           Top Requesting IPs
+          <button class="reload-btn" id="reload-btn-top_ips" onclick="reloadPanel('top_ips')"
+            title="Reload Top IPs">🔄</button>
         </h2>
-        <button id="ip-scale-toggle" class="toggle-btn" onclick="toggleIpScale()" style="height:32px; padding:0 10px; font-size:12px;">Log Scale</button>
+        <button id="ip-scale-toggle" class="toggle-btn" onclick="toggleIpScale()"
+          style="height:32px; padding:0 10px; font-size:12px;">Log Scale</button>
       </div>
-      <div id="ip-chart-container" style="height: 300px; position: relative;">
+      <div id="ip-chart-container" class="chart-wrapper" style="height: 300px; position: relative; width: 100%;">
+        <div class="chart-loader"></div>
+        <div class="skeleton-chart-placeholder horizontal"
+          style="position: absolute; inset: 0; display: none; flex-direction: column; justify-content: space-between; padding: 10px 20px; z-index: 5; height: 100%;">
+          <div
+            style="display: flex; flex-direction: column; height: 100%; gap: 12px; width: 100%; justify-content: center;">
+            <div class="skeleton-line" style="width: 80%; height: 18px; border-radius: 4px;"></div>
+            <div class="skeleton-line" style="width: 60%; height: 18px; border-radius: 4px;"></div>
+            <div class="skeleton-line" style="width: 75%; height: 18px; border-radius: 4px;"></div>
+            <div class="skeleton-line" style="width: 45%; height: 18px; border-radius: 4px;"></div>
+            <div class="skeleton-line" style="width: 90%; height: 18px; border-radius: 4px;"></div>
+            <div class="skeleton-line" style="width: 50%; height: 18px; border-radius: 4px;"></div>
+          </div>
+        </div>
         <canvas id="ipChart" style="height: 300px; width: 100%;"></canvas>
       </div>
     </div>
 
     <!-- Top Paths / Error Breakdown -->
     <div class="chart-card">
-      <div class="threat-header" style="margin-bottom: 12px; border-bottom: none; padding-bottom: 0;">
-        <div class="threat-tabs" style="width: 100%;">
-          <button id="tab-top-paths" class="threat-tab-btn active" onclick="switchRightTab('paths')" style="flex:1;">Top URLs/Paths</button>
-          <button id="tab-error-codes" class="threat-tab-btn" onclick="switchRightTab('codes')" style="flex:1;">Errors Breakdown</button>
+      <div class="threat-header"
+        style="margin-bottom: 12px; border-bottom: none; padding-bottom: 0; display: flex; justify-content: space-between; align-items: center; width: 100%;">
+        <div class="threat-tabs" style="flex: 1; display: flex; margin-right: 12px;">
+          <button id="tab-top-paths" class="threat-tab-btn active" onclick="switchRightTab('paths')" style="flex:1;">Top
+            URLs/Paths</button>
+          <button id="tab-error-codes" class="threat-tab-btn" onclick="switchRightTab('codes')" style="flex:1;">Errors
+            Breakdown</button>
         </div>
+        <button class="reload-btn" id="reload-btn-right_stats" onclick="reloadPanel('right_stats')"
+          title="Reload Paths & Errors">🔄</button>
       </div>
-      
+
       <!-- Panel Top Paths -->
       <div id="right-panel-paths" class="threat-tab-panel active" style="margin-top: 10px;">
         <div class="table-container">
@@ -936,12 +1133,14 @@
               </tr>
             </thead>
             <tbody id="top-paths-table">
-              <tr><td colspan="2" style="text-align:center;color:var(--text-secondary);">Loading...</td></tr>
+              <tr>
+                <td colspan="2" style="text-align:center;color:var(--text-secondary);">Loading...</td>
+              </tr>
             </tbody>
           </table>
         </div>
       </div>
-      
+
       <!-- Panel Error Codes -->
       <div id="right-panel-codes" class="threat-tab-panel" style="margin-top: 10px;">
         <div class="table-container">
@@ -953,7 +1152,9 @@
               </tr>
             </thead>
             <tbody id="error-codes-table">
-              <tr><td colspan="2" style="text-align:center;color:var(--text-secondary);">Loading...</td></tr>
+              <tr>
+                <td colspan="2" style="text-align:center;color:var(--text-secondary);">Loading...</td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -965,14 +1166,20 @@
   <div class="chart-card full-width" style="margin-top: 24px;">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
       <h2 style="margin-bottom:0;">
-        <svg style="width:20px;height:20px;color:var(--accent);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+        <svg style="width:20px;height:20px;color:var(--accent);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+        </svg>
         System Logs Console
       </h2>
       <div style="display:flex; gap:8px;">
-        <button onclick="loadSystemLogs()" class="btn-secondary" style="height:32px; padding:0 12px; font-size:12px;">Refresh</button>
+        <button onclick="reloadPanel('system_logs')" class="btn-secondary" id="reload-btn-system_logs"
+          style="height:32px; padding:0 12px; font-size:12px; display:inline-flex; align-items:center; gap:6px;">
+          <span class="refresh-icon">🔄</span> Refresh
+        </button>
       </div>
     </div>
-    
+
     <div class="terminal">
       <div class="terminal-bar">
         <div class="terminal-dots">
@@ -997,7 +1204,7 @@
     const API = "";
 
     dayjs.extend(window.dayjs_plugin_customParseFormat);
-    
+
     // Use default Chart.js animations instead of custom object which caused interpolator errors
     Chart.defaults.color = '#9ca3af';
     Chart.defaults.borderColor = 'rgba(255, 255, 255, 0.05)';
@@ -1009,7 +1216,7 @@
     let useTrafficLogScale = false;
     let useStatusLogScale = false;
     let useIpLogScale = false;
-    
+
     // Client-side cache for Top IPs to prevent re-fetching on scale toggle
     let cachedTopIpsData = null;
 
@@ -1017,18 +1224,114 @@
     let searchCursors = [null];
     let searchCursorIds = [null];
     let currentSearchPage = 0;
+    let currentTotalCount = 0;
 
     // Cache anomaly listings
     let rateSpikesData = [];
     let scannersData = [];
     let errorsData = [];
 
-    // Live Polling References
-    let liveInterval = null;
-    let liveCountdown = null;
-    let liveModeActive = false;
-    const REFRESH_RATE_MS = 6000;
-    let countdownProgress = 0;
+    // Cache helper constants
+    const CACHE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
+
+    function getLocalCache(key) {
+      try {
+        const item = localStorage.getItem(key);
+        if (!item) return null;
+        const parsed = JSON.parse(item);
+        if (!parsed || !parsed.timestamp || !parsed.data) return null;
+        const age = Date.now() - parsed.timestamp;
+        return { data: parsed.data, stale: age > CACHE_MAX_AGE_MS };
+      } catch (e) {
+        console.error("Cache read failed", e);
+        return null;
+      }
+    }
+
+    function saveLocalCache(key, data) {
+      try {
+        const payload = {
+          timestamp: Date.now(),
+          data: data
+        };
+        localStorage.setItem(key, JSON.stringify(payload));
+      } catch (e) {
+        console.error("Cache write failed", e);
+      }
+    }
+
+    function setReloadSpinner(panelName, loading) {
+      let el;
+      if (panelName === 'system_logs') {
+        el = document.querySelector("#reload-btn-system_logs .refresh-icon");
+      } else {
+        el = document.getElementById(`reload-btn-${panelName}`);
+      }
+      if (!el) return;
+      if (loading) {
+        el.classList.add("spinning");
+      } else {
+        el.classList.remove("spinning");
+      }
+    }
+
+    // Skeleton loaders
+    function showSummarySkeleton() {
+      document.getElementById("total-requests").innerHTML = `<span class="skeleton-line" style="display:inline-block; width:120px; height:36px; margin:4px 0;"></span>`;
+      document.getElementById("unique-ips").innerHTML = `<span class="skeleton-line" style="display:inline-block; width:100px; height:36px; margin:4px 0;"></span>`;
+      document.getElementById("error-rate").innerHTML = `<span class="skeleton-line" style="display:inline-block; width:80px; height:36px; margin:4px 0;"></span>`;
+      document.getElementById("health-score").innerHTML = `<span class="skeleton-line" style="display:inline-block; width:90px; height:36px; margin:4px 0;"></span>`;
+    }
+
+    function showAnomaliesSkeleton() {
+      const rateSpikesSkeleton = `
+        <tr>
+          <td><div class="skeleton-line" style="width: 120px;"></div></td>
+          <td><div class="skeleton-line" style="width: 140px;"></div></td>
+          <td><div class="skeleton-line" style="width: 80px;"></div></td>
+          <td><div class="skeleton-line" style="width: 70px;"></div></td>
+        </tr>
+      `.repeat(3);
+      const defaultTableSkeleton = `
+        <tr>
+          <td><div class="skeleton-line" style="width: 120px;"></div></td>
+          <td><div class="skeleton-line" style="width: 80px;"></div></td>
+          <td><div class="skeleton-line" style="width: 70px;"></div></td>
+        </tr>
+      `.repeat(3);
+      document.getElementById("anomaly-rate-list").innerHTML = rateSpikesSkeleton;
+      document.getElementById("anomaly-scanner-list").innerHTML = defaultTableSkeleton;
+      document.getElementById("anomaly-error-list").innerHTML = defaultTableSkeleton;
+    }
+
+    function showPathsSkeleton() {
+      const rowSkeleton = `
+        <tr>
+          <td><div class="skeleton-line" style="width: 180px;"></div></td>
+          <td><div class="skeleton-line" style="width: 60px;"></div></td>
+        </tr>
+      `.repeat(4);
+      document.getElementById("top-paths-table").innerHTML = rowSkeleton;
+    }
+
+    function showCodesSkeleton() {
+      const rowSkeleton = `
+        <tr>
+          <td><div class="skeleton-line" style="width: 100px;"></div></td>
+          <td><div class="skeleton-line" style="width: 60px;"></div></td>
+        </tr>
+      `.repeat(4);
+      document.getElementById("error-codes-table").innerHTML = rowSkeleton;
+    }
+
+    function showSystemLogsSkeleton() {
+      document.getElementById("system-logs").innerHTML = `
+        <div class="terminal-row"><div class="skeleton-line" style="width: 80%; height: 14px; margin-bottom: 8px;"></div></div>
+        <div class="terminal-row"><div class="skeleton-line" style="width: 65%; height: 14px; margin-bottom: 8px;"></div></div>
+        <div class="terminal-row"><div class="skeleton-line" style="width: 90%; height: 14px; margin-bottom: 8px;"></div></div>
+        <div class="terminal-row"><div class="skeleton-line" style="width: 50%; height: 14px; margin-bottom: 8px;"></div></div>
+      `;
+    }
 
     const LOG_TICK_STEPS = [1, 2, 4, 6, 8];
     const SEARCH_DATE_FORMATS = [
@@ -1124,7 +1427,7 @@
       const node = document.getElementById(id);
       if (!node) return;
       const retryHtml = retryFn ? `<button onclick="${retryFn}" class="btn-primary" style="margin-top:12px; padding:6px 16px; font-size:12px;">Retry</button>` : '';
-      
+
       if (node.tagName === "TBODY") {
         node.innerHTML = `<tr><td colspan="10" style="padding:24px; text-align:center; color:var(--danger);">
           <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
@@ -1135,7 +1438,7 @@
         </td></tr>`;
         return;
       }
-      
+
       node.innerHTML = `
         <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:30px; text-align:center; color:var(--danger); background:rgba(239,68,68,0.05); border:1px solid rgba(239,68,68,0.1); border-radius:12px; height: 100%;">
           <svg style="width:32px;height:32px;margin-bottom:8px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
@@ -1146,75 +1449,11 @@
       `;
     }
 
-    // Live Auto-Refresh controls
-    function toggleLiveMode() {
-      liveModeActive = !liveModeActive;
-      const btn = document.getElementById("live-toggle");
-      const progressContainer = document.getElementById("live-progress-container");
-      
-      btn.classList.toggle("active", liveModeActive);
-      btn.querySelector("span:last-child").textContent = liveModeActive ? "Live: ON" : "Live: OFF";
-      btn.querySelector(".live-indicator").classList.toggle("active", liveModeActive);
-
-      if (liveModeActive) {
-        progressContainer.style.display = "block";
-        startLivePolling();
-      } else {
-        progressContainer.style.display = "none";
-        stopLivePolling();
-      }
-    }
-
-    function startLivePolling() {
-      clearInterval(liveInterval);
-      clearInterval(liveCountdown);
-      
-      countdownProgress = 0;
-      
-      liveInterval = setInterval(async () => {
-        countdownProgress = 0;
-        await refreshDashboardData();
-      }, REFRESH_RATE_MS);
-      
-      const stepMs = 100;
-      const totalSteps = REFRESH_RATE_MS / stepMs;
-      
-      liveCountdown = setInterval(() => {
-        countdownProgress += (100 / totalSteps);
-        document.getElementById("live-progress-bar").style.width = `${Math.min(100, countdownProgress)}%`;
-      }, stepMs);
-    }
-
-    function stopLivePolling() {
-      clearInterval(liveInterval);
-      clearInterval(liveCountdown);
-      document.getElementById("live-progress-bar").style.width = "0%";
-    }
-
-    async function refreshDashboardData() {
-      const trafficIp = document.getElementById("traffic-ip-search").value.trim();
-      const statusRange = document.querySelector(".range-btn.active").dataset.range;
-      
-      const promises = [];
-      if (!trafficIp && statusRange === "hour") {
-        promises.push(loadDashboard());
-      } else {
-        promises.push(loadSummary());
-        promises.push(loadThreatAndAnomalies());
-        promises.push(loadTopIPs());
-        promises.push(loadTraffic(trafficIp));
-        promises.push(loadStatusCodes(statusRange));
-        promises.push(loadRightStats());
-      }
-      promises.push(loadSystemLogs(false));
-      await Promise.all(promises);
-    }
-
     // Tab Switcher for Threat Panel
     function switchThreatTab(tabName) {
       document.querySelectorAll('.threat-tab-btn').forEach(btn => btn.classList.remove('active'));
       document.querySelectorAll('.threat-tab-panel').forEach(panel => panel.classList.remove('active'));
-      
+
       document.getElementById(`tab-${tabName}`).classList.add('active');
       document.getElementById(`threat-${tabName}-panel`).classList.add('active');
     }
@@ -1224,7 +1463,7 @@
       document.querySelectorAll('#right-panel-paths, #right-panel-codes').forEach(panel => panel.classList.remove('active'));
       document.getElementById(`tab-top-paths`).classList.remove('active');
       document.getElementById(`tab-error-codes`).classList.remove('active');
-      
+
       if (tabName === 'paths') {
         document.getElementById('tab-top-paths').classList.add('active');
         document.getElementById('right-panel-paths').classList.add('active');
@@ -1263,6 +1502,7 @@
       return ticks.length - 1;
     }
 
+    // Handle Log scales correctly
     function compressedData(values, ticks) {
       return values.map(value => compressedValue(value, ticks));
     }
@@ -1291,7 +1531,7 @@
         const progress = Math.min((timestamp - startTimestamp) / duration, 1);
         const easeOut = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
         const current = start + easeOut * (end - start);
-        
+
         if (formatStr === "%") {
           obj.innerHTML = current.toFixed(2) + "%";
         } else if (formatStr === "health") {
@@ -1299,7 +1539,7 @@
         } else {
           obj.innerHTML = Math.floor(current).toLocaleString();
         }
-        
+
         if (progress < 1) {
           window.requestAnimationFrame(step);
         }
@@ -1308,10 +1548,29 @@
     }
 
     // Load Data Functions
-    async function loadSummary() {
+    async function loadSummary(force = false) {
+      const key = "cache_summary";
+      if (!force) {
+        const cached = getLocalCache(key);
+        if (cached) {
+          populateSummary(cached.data);
+          if (cached.stale) {
+            fetchJson("/stats/summary")
+              .then(data => {
+                populateSummary(data);
+                saveLocalCache(key, data);
+              })
+              .catch(err => console.error("Summary background refresh failed", err));
+          }
+          return;
+        }
+      }
+
+      showSummarySkeleton();
       try {
         const data = await fetchJson("/stats/summary");
         populateSummary(data);
+        saveLocalCache(key, data);
       } catch (error) {
         document.getElementById("total-requests").textContent = "ERR";
         document.getElementById("unique-ips").textContent = "ERR";
@@ -1321,63 +1580,82 @@
     }
 
     function populateSummary(data) {
-        const totalReq = data.total_requests || 0;
-        const errCount = data.errors || 0;
-        const errRate = totalReq > 0 ? (errCount / totalReq) * 100 : 0;
-        const health = Math.max(0, 100 - errRate);
+      const totalReq = data.total_requests || 0;
+      const errCount = data.errors || 0;
+      const errRate = totalReq > 0 ? (errCount / totalReq) * 100 : 0;
+      const health = Math.max(0, 100 - errRate);
 
-        const elTotal = document.getElementById("total-requests");
-        const elIps = document.getElementById("unique-ips");
-        const elError = document.getElementById("error-rate");
-        const elHealth = document.getElementById("health-score");
+      const elTotal = document.getElementById("total-requests");
+      const elIps = document.getElementById("unique-ips");
+      const elError = document.getElementById("error-rate");
+      const elHealth = document.getElementById("health-score");
 
-        animateValue(elTotal, 0, totalReq, 2000);
-        animateValue(elIps, 0, data.unique_ips || 0, 2000);
-        animateValue(elError, 0, errRate, 2000, "%");
-        animateValue(elHealth, 0, health, 2000, "health");
-        
-        // Set error rate state coloring
-        if (errRate >= 5) {
-          document.getElementById("error-rate").style.color = "var(--danger)";
-        } else if (errRate >= 2) {
-          document.getElementById("error-rate").style.color = "var(--warning)";
-        } else {
-          document.getElementById("error-rate").style.color = "var(--success)";
-        }
-        
-        // Health Score coloring
-        const healthCardEl = elHealth.closest(".card");
-        if (health >= 95) {
-          elHealth.style.color = "var(--success)";
-          healthCardEl.style.borderColor = "rgba(16, 185, 129, 0.15)";
-        } else if (health >= 85) {
-          elHealth.style.color = "var(--warning)";
-          healthCardEl.style.borderColor = "rgba(251, 191, 36, 0.15)";
-        } else {
-          elHealth.style.color = "var(--danger)";
-          healthCardEl.style.borderColor = "rgba(248, 113, 113, 0.15)";
-        }
+      animateValue(elTotal, 0, totalReq, 2000);
+      animateValue(elIps, 0, data.unique_ips || 0, 2000);
+      animateValue(elError, 0, errRate, 2000, "%");
+      animateValue(elHealth, 0, health, 2000, "health");
+
+      // Set error rate state coloring
+      if (errRate >= 5) {
+        document.getElementById("error-rate").style.color = "var(--danger)";
+      } else if (errRate >= 2) {
+        document.getElementById("error-rate").style.color = "var(--warning)";
+      } else {
+        document.getElementById("error-rate").style.color = "var(--success)";
+      }
+
+      // Health Score coloring
+      const healthCardEl = elHealth.closest(".card");
+      if (health >= 95) {
+        elHealth.style.color = "var(--success)";
+        healthCardEl.style.borderColor = "rgba(16, 185, 129, 0.15)";
+      } else if (health >= 85) {
+        elHealth.style.color = "var(--warning)";
+        healthCardEl.style.borderColor = "rgba(251, 191, 36, 0.15)";
+      } else {
+        elHealth.style.color = "var(--danger)";
+        healthCardEl.style.borderColor = "rgba(248, 113, 113, 0.15)";
+      }
     }
 
-    async function loadThreatAndAnomalies() {
+    async function loadThreatAndAnomalies(force = false) {
+      const key = "cache_anomalies";
+      if (!force) {
+        const cached = getLocalCache(key);
+        if (cached) {
+          populateThreatAndAnomalies(cached.data);
+          if (cached.stale) {
+            fetchJson("/stats/anomalies")
+              .then(data => {
+                populateThreatAndAnomalies(data);
+                saveLocalCache(key, data);
+              })
+              .catch(err => console.error("Anomalies background refresh failed", err));
+          }
+          return;
+        }
+      }
+
+      showAnomaliesSkeleton();
       try {
         const data = await fetchJson("/stats/anomalies");
         populateThreatAndAnomalies(data);
+        saveLocalCache(key, data);
       } catch (error) {
-        renderPanelError("anomaly-rate-list", error.message, "loadThreatAndAnomalies()");
+        renderPanelError("anomaly-rate-list", error.message, "loadThreatAndAnomalies(true)");
         renderPanelError("anomaly-scanner-list", error.message);
         renderPanelError("anomaly-error-list", error.message);
       }
     }
 
     function populateThreatAndAnomalies(data) {
-        rateSpikesData = data.high_frequency || [];
-        scannersData = data.many_404s || [];
-        errorsData = data.many_500s || [];
-        
-        renderAnomalyRatePage(0);
-        renderAnomalyScannerPage(0);
-        renderAnomalyErrorPage(0);
+      rateSpikesData = data.high_frequency || [];
+      scannersData = data.many_404s || [];
+      errorsData = data.many_500s || [];
+
+      renderAnomalyRatePage(0);
+      renderAnomalyScannerPage(0);
+      renderAnomalyErrorPage(0);
     }
 
     // 1. Rate Spikes Pagination
@@ -1387,13 +1665,13 @@
       const limit = 5;
       const total = rateSpikesData.length;
       const totalPages = Math.max(Math.ceil(total / limit), 1);
-      
+
       if (total === 0) {
         tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--success);padding:14px;">✓ No rate spike threats found</td></tr>`;
         pag.innerHTML = "";
         return;
       }
-      
+
       const start = page * limit;
       const items = rateSpikesData.slice(start, start + limit);
       tbody.innerHTML = items.map(d => `
@@ -1404,7 +1682,7 @@
           <td><span class="badge danger">CRITICAL</span></td>
         </tr>
       `).join("");
-      
+
       pag.innerHTML = totalPages <= 1 ? "" : `
         <button onclick="renderAnomalyRatePage(${page - 1})" ${page === 0 ? 'disabled' : ''} class="btn-secondary" style="padding:4px 10px; font-size:12px; opacity:${page === 0 ? 0.4 : 1};">← Prev</button>
         <span style="color:var(--text-secondary);font-size:12px;">Page ${page + 1} of ${totalPages} (${total} total)</span>
@@ -1419,13 +1697,13 @@
       const limit = 5;
       const total = scannersData.length;
       const totalPages = Math.max(Math.ceil(total / limit), 1);
-      
+
       if (total === 0) {
         tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--success);padding:14px;">✓ No URL scanning patterns detected</td></tr>`;
         pag.innerHTML = "";
         return;
       }
-      
+
       const start = page * limit;
       const items = scannersData.slice(start, start + limit);
       tbody.innerHTML = items.map(d => `
@@ -1435,7 +1713,7 @@
           <td><span class="badge warning">WARNING</span></td>
         </tr>
       `).join("");
-      
+
       pag.innerHTML = totalPages <= 1 ? "" : `
         <button onclick="renderAnomalyScannerPage(${page - 1})" ${page === 0 ? 'disabled' : ''} class="btn-secondary" style="padding:4px 10px; font-size:12px; opacity:${page === 0 ? 0.4 : 1};">← Prev</button>
         <span style="color:var(--text-secondary);font-size:12px;">Page ${page + 1} of ${totalPages} (${total} total)</span>
@@ -1450,13 +1728,13 @@
       const limit = 5;
       const total = errorsData.length;
       const totalPages = Math.max(Math.ceil(total / limit), 1);
-      
+
       if (total === 0) {
         tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--success);padding:14px;">✓ No server error anomalies found</td></tr>`;
         pag.innerHTML = "";
         return;
       }
-      
+
       const start = page * limit;
       const items = errorsData.slice(start, start + limit);
       tbody.innerHTML = items.map(d => `
@@ -1466,7 +1744,7 @@
           <td><span class="badge danger">CRITICAL</span></td>
         </tr>
       `).join("");
-      
+
       pag.innerHTML = totalPages <= 1 ? "" : `
         <button onclick="renderAnomalyErrorPage(${page - 1})" ${page === 0 ? 'disabled' : ''} class="btn-secondary" style="padding:4px 10px; font-size:12px; opacity:${page === 0 ? 0.4 : 1};">← Prev</button>
         <span style="color:var(--text-secondary);font-size:12px;">Page ${page + 1} of ${totalPages} (${total} total)</span>
@@ -1475,92 +1753,112 @@
     }
 
     let trafficAbortController = null;
-    async function loadTraffic(ip = "") {
+    async function loadTraffic(ip = "", force = false) {
       if (trafficAbortController) trafficAbortController.abort();
       trafficAbortController = new AbortController();
       const signal = trafficAbortController.signal;
 
+      const limit = 48;
+      const key = `cache_traffic_${ip}`;
+
+      if (!force) {
+        const cached = getLocalCache(key);
+        if (cached) {
+          populateTrafficData(cached.data);
+          if (cached.stale) {
+            fetchJson(`/stats/traffic?granularity=hour&limit=${limit}&offset=0&ip=${encodeURIComponent(ip)}`, { signal })
+              .then(data => {
+                populateTrafficData(data);
+                saveLocalCache(key, data);
+              })
+              .catch(err => {
+                if (err.name !== 'AbortError') console.error("Traffic background refresh failed", err);
+              });
+          }
+          return;
+        }
+      }
+
       const container = document.getElementById("traffic-chart-container");
       if (container) container.classList.add("loading");
+
       try {
-        const limit = 48;
         const data = await fetchJson(`/stats/traffic?granularity=hour&limit=${limit}&offset=0&ip=${encodeURIComponent(ip)}`, { signal });
         populateTrafficData(data);
+        saveLocalCache(key, data);
       } catch (error) {
-        if (error.name !== 'AbortError') renderPanelError("traffic-chart-container", error.message, "loadTraffic()");
+        if (error.name !== 'AbortError') renderPanelError("traffic-chart-container", error.message, "loadTraffic('', true)");
       } finally {
         if (container) container.classList.remove("loading");
       }
     }
 
     function populateTrafficData(data) {
-        const chunkLabels = data.map(d => formatPeriod(d.period));
-        const chunkCounts = data.map(d => Number(d.count) || 0);
+      const chunkLabels = data.map(d => formatPeriod(d.period));
+      const chunkCounts = data.map(d => Number(d.count) || 0);
 
-        // Compute canvas width: at least 60px per data point, never less than container
-        const MIN_PX_PER_POINT = 60;
-        const outerEl = document.getElementById('traffic-scroll-outer');
-        const innerEl = document.getElementById('traffic-scroll-inner');
-        const canvasEl = document.getElementById('trafficChart');
-        const outerWidth = outerEl ? outerEl.offsetWidth : 800;
-        const canvasWidth = Math.max(chunkLabels.length * MIN_PX_PER_POINT, outerWidth);
-        // Grow the inner scroll container to match
-        if (innerEl) innerEl.style.width = canvasWidth + 'px';
+      const MIN_PX_PER_POINT = 60;
+      const outerEl = document.getElementById('traffic-scroll-outer');
+      const innerEl = document.getElementById('traffic-scroll-inner');
+      const canvasEl = document.getElementById('trafficChart');
+      const outerWidth = outerEl ? outerEl.offsetWidth : 800;
+      const canvasWidth = Math.max(chunkLabels.length * MIN_PX_PER_POINT, outerWidth);
+      if (innerEl) innerEl.style.width = canvasWidth + 'px';
 
-        if (!trafficChart) {
-          // Set canvas bitmap dimensions BEFORE Chart.js reads them on init
-          canvasEl.width  = canvasWidth;
-          canvasEl.height = 350;
-          canvasEl.style.width  = canvasWidth + 'px';
-          canvasEl.style.height = '350px';
+      if (!trafficChart) {
+        canvasEl.width = canvasWidth;
+        canvasEl.height = 350;
+        canvasEl.style.width = canvasWidth + 'px';
+        canvasEl.style.height = '350px';
 
-          const ctx = canvasEl.getContext("2d");
-          const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-          gradient.addColorStop(0, 'rgba(56, 189, 248, 0.25)');
-          gradient.addColorStop(1, 'rgba(56, 189, 248, 0.00)');
+        const ctx = canvasEl.getContext("2d");
+        const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+        gradient.addColorStop(0, 'rgba(56, 189, 248, 0.25)');
+        gradient.addColorStop(1, 'rgba(56, 189, 248, 0.00)');
 
-          trafficChart = new Chart(ctx, {
-            type: "line",
-            plugins: [glowPlugin],
-            data: { labels: [], datasets: [{ 
+        trafficChart = new Chart(ctx, {
+          type: "line",
+          plugins: [glowPlugin],
+          data: {
+            labels: [], datasets: [{
               label: "Requests", originalData: [], data: [],
               borderColor: "#38bdf8", backgroundColor: gradient, fill: true,
               tension: 0.4, pointRadius: 0, pointHoverRadius: 6,
               pointHoverBackgroundColor: "#38bdf8", pointHoverBorderColor: "#fff",
               pointHoverBorderWidth: 2, borderWidth: 3,
-            }]},
-            options: {
-              responsive: false,          // must be false — we control size via resize()
-              maintainAspectRatio: false,
-              interaction: { mode: "index", intersect: false },
-              plugins: {
-                legend: { display: false },
-                tooltip: {
-                  backgroundColor: '#0f172a', titleColor: '#e2e8f0', bodyColor: '#38bdf8',
-                  borderColor: 'rgba(255, 255, 255, 0.1)', borderWidth: 1,
-                  callbacks: { label: ctx => ` Requests: ${ctx.dataset.originalData?.[ctx.dataIndex] ?? ctx.parsed.y}` }
-                }
-              },
-              scales: {
-                x: { ticks: { color: "#64748b", maxRotation: 45, autoSkip: true, autoSkipPadding: 20 }, grid: { display: false } },
-                y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } }
+            }]
+          },
+          options: {
+            responsive: false,
+            maintainAspectRatio: false,
+            interaction: { mode: "index", intersect: false },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: '#0f172a', titleColor: '#e2e8f0', bodyColor: '#38bdf8',
+                borderColor: 'rgba(255, 255, 255, 0.1)', borderWidth: 1,
+                callbacks: { label: ctx => ` Requests: ${ctx.dataset.originalData?.[ctx.dataIndex] ?? ctx.parsed.y}` }
               }
+            },
+            scales: {
+              x: { ticks: { color: "#64748b", maxRotation: 45, autoSkip: true, autoSkipPadding: 20 }, grid: { display: false } },
+              y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } }
             }
-          });
-        } else {
-          // Chart already exists — extend it to the new width without recreating
-          trafficChart.resize(canvasWidth, 350);
-        }
+          }
+        });
+      } else {
+        trafficChart.resize(canvasWidth, 350);
+      }
 
-        trafficChart.data.labels = chunkLabels;
-        trafficChart.data.datasets[0].originalData = chunkCounts;
+      trafficChart.data.labels = chunkLabels;
+      trafficChart.data.datasets[0].originalData = chunkCounts;
 
-        const compressedTicks = buildCompressedTicks(Math.max(...chunkCounts, 1));
-        const newScaledData = useTrafficLogScale ? compressedData(chunkCounts, compressedTicks) : chunkCounts;
+      const compressedTicks = buildCompressedTicks(Math.max(...chunkCounts, 1));
+      const newScaledData = useTrafficLogScale ? compressedData(chunkCounts, compressedTicks) : chunkCounts;
 
-        trafficChart.data.datasets[0].data = newScaledData;
-        trafficChart.options.scales.y = useTrafficLogScale ? compressedAxisOptions(compressedTicks) : { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } };
-        trafficChart.update('none');
+      trafficChart.data.datasets[0].data = newScaledData;
+      trafficChart.options.scales.y = useTrafficLogScale ? compressedAxisOptions(compressedTicks) : { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } };
+      trafficChart.update('none');
     }
 
     function toggleTrafficScale() {
@@ -1570,103 +1868,120 @@
     }
 
     let statusAbortController = null;
-    async function loadStatusCodes(range = "hour") {
+    async function loadStatusCodes(range = "hour", force = false) {
       if (statusAbortController) statusAbortController.abort();
       statusAbortController = new AbortController();
       const signal = statusAbortController.signal;
 
       const limit = numberInputValue("status-limit", 48, 5, 500);
       document.getElementById("status-limit-unit").textContent = range === "minute" ? "minutes" : range === "day" ? "days" : "hours";
-      
+
+      const key = `cache_status_codes_${range}_${limit}`;
+
+      if (!force) {
+        const cached = getLocalCache(key);
+        if (cached) {
+          populateStatusCodesData(cached.data);
+          if (cached.stale) {
+            fetchJson(`/stats/status-codes-over-time?granularity=${range}&limit=${limit}&offset=0`, { signal })
+              .then(data => {
+                populateStatusCodesData(data);
+                saveLocalCache(key, data);
+              })
+              .catch(err => {
+                if (err.name !== 'AbortError') console.error("Status codes background refresh failed", err);
+              });
+          }
+          return;
+        }
+      }
+
       const wrapper = document.getElementById("statusChartWrapper");
       if (wrapper) wrapper.classList.add("loading");
+
       try {
         const data = await fetchJson(`/stats/status-codes-over-time?granularity=${range}&limit=${limit}&offset=0`, { signal });
         populateStatusCodesData(data);
+        saveLocalCache(key, data);
       } catch (error) {
-        if (error.name !== 'AbortError') renderPanelError("statusChartWrapper", error.message, `loadStatusCodes('${range}')`);
+        if (error.name !== 'AbortError') renderPanelError("statusChartWrapper", error.message, `loadStatusCodes('${range}', true)`);
       } finally {
         if (wrapper) wrapper.classList.remove("loading");
       }
     }
 
     function renderStatusLegend(datasets, colors) {
-        const el = document.getElementById('status-legend');
-        if (!el) return;
-        el.innerHTML = datasets.map((ds, i) =>
-          `<span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-secondary);">
+      const el = document.getElementById('status-legend');
+      if (!el) return;
+      el.innerHTML = datasets.map((ds, i) =>
+        `<span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-secondary);">
             <span style="display:inline-block;width:24px;height:3px;border-radius:2px;background:${colors[i % colors.length]};"></span>
             Status ${ds.label}
           </span>`
-        ).join('');
+      ).join('');
     }
 
     function populateStatusCodesData(data) {
-        const colors = ["#38bdf8", "#10b981", "#fbbf24", "#ef4444", "#a855f7", "#06b6d4", "#f97316", "#ec4899"];
-        const chunkLabels = data.labels.map(l => formatPeriod(l));
+      const colors = ["#38bdf8", "#10b981", "#fbbf24", "#ef4444", "#a855f7", "#06b6d4", "#f97316", "#ec4899"];
+      const chunkLabels = data.labels.map(l => formatPeriod(l));
 
-        // Compute canvas width: at least 48px per point, never less than container
-        const MIN_PX_PER_POINT = 48;
-        const outerEl  = document.getElementById('status-scroll-outer');
-        const innerEl  = document.getElementById('status-scroll-inner');
-        const canvasEl = document.getElementById('statusChart');
-        const outerWidth  = outerEl ? outerEl.offsetWidth : 800;
-        const canvasWidth = Math.max(chunkLabels.length * MIN_PX_PER_POINT, outerWidth);
-        if (innerEl) innerEl.style.width = canvasWidth + 'px';
+      const MIN_PX_PER_POINT = 48;
+      const outerEl = document.getElementById('status-scroll-outer');
+      const innerEl = document.getElementById('status-scroll-inner');
+      const canvasEl = document.getElementById('statusChart');
+      const outerWidth = outerEl ? outerEl.offsetWidth : 800;
+      const canvasWidth = Math.max(chunkLabels.length * MIN_PX_PER_POINT, outerWidth);
+      if (innerEl) innerEl.style.width = canvasWidth + 'px';
 
-        if (!statusChart) {
-          // Set canvas bitmap dimensions before Chart.js init
-          canvasEl.width  = canvasWidth;
-          canvasEl.height = 350;
-          canvasEl.style.width  = canvasWidth + 'px';
-          canvasEl.style.height = '350px';
+      if (!statusChart) {
+        canvasEl.width = canvasWidth;
+        canvasEl.height = 350;
+        canvasEl.style.width = canvasWidth + 'px';
+        canvasEl.style.height = '350px';
 
-          statusChart = new Chart(canvasEl, {
-            type: "line", plugins: [glowPlugin],
-            data: { labels: [], datasets: [] },
-            options: {
-              responsive: false, maintainAspectRatio: false,
-              interaction: { mode: "index", intersect: false },
-              plugins: {
-                legend: { display: false },  // legend rendered as HTML above scroll
-                tooltip: { backgroundColor: '#0f172a', borderColor: 'rgba(255, 255, 255, 0.1)', borderWidth: 1, callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.dataset.originalData?.[ctx.dataIndex] ?? ctx.parsed.y}` } }
-              },
-              scales: {
-                x: { ticks: { color: "#64748b", maxRotation: 45, autoSkip: true, autoSkipPadding: 20 }, grid: { display: false } },
-                y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } }
-              }
+        statusChart = new Chart(canvasEl, {
+          type: "line", plugins: [glowPlugin],
+          data: { labels: [], datasets: [] },
+          options: {
+            responsive: false, maintainAspectRatio: false,
+            interaction: { mode: "index", intersect: false },
+            plugins: {
+              legend: { display: false },
+              tooltip: { backgroundColor: '#0f172a', borderColor: 'rgba(255, 255, 255, 0.1)', borderWidth: 1, callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.dataset.originalData?.[ctx.dataIndex] ?? ctx.parsed.y}` } }
+            },
+            scales: {
+              x: { ticks: { color: "#64748b", maxRotation: 45, autoSkip: true, autoSkipPadding: 20 }, grid: { display: false } },
+              y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } }
             }
-          });
-        } else {
-          // Extend existing chart to new width
-          statusChart.resize(canvasWidth, 350);
-        }
-
-        // Build datasets
-        const newDatasets = data.datasets.map((ds, i) => ({
-          label: `Status ${ds.label}`,
-          originalData: ds.data.map(v => Number(v) || 0),
-          data: [],
-          borderColor: colors[i % colors.length],
-          tension: 0.4, pointRadius: 0, pointHoverRadius: 6, borderWidth: 3, spanGaps: true
-        }));
-
-        statusChart.data.labels   = chunkLabels;
-        statusChart.data.datasets = newDatasets;
-
-        const maxCount = Math.max(10, ...newDatasets.flatMap(d => d.originalData));
-        const compressedTicks = buildCompressedTicks(maxCount);
-        statusChart.data.datasets.forEach(chartDs => {
-          chartDs.data = useStatusLogScale ? compressedData(chartDs.originalData, compressedTicks) : chartDs.originalData;
+          }
         });
+      } else {
+        statusChart.resize(canvasWidth, 350);
+      }
 
-        statusChart.options.scales.y = useStatusLogScale
-          ? compressedAxisOptions(compressedTicks)
-          : { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } };
-        statusChart.update('none');
+      const newDatasets = data.datasets.map((ds, i) => ({
+        label: `Status ${ds.label}`,
+        originalData: ds.data.map(v => Number(v) || 0),
+        data: [],
+        borderColor: colors[i % colors.length],
+        tension: 0.4, pointRadius: 0, pointHoverRadius: 6, borderWidth: 3, spanGaps: true
+      }));
 
-        // Render fixed HTML legend (outside scroll container)
-        renderStatusLegend(data.datasets, colors);
+      statusChart.data.labels = chunkLabels;
+      statusChart.data.datasets = newDatasets;
+
+      const maxCount = Math.max(10, ...newDatasets.flatMap(d => d.originalData));
+      const compressedTicks = buildCompressedTicks(maxCount);
+      statusChart.data.datasets.forEach(chartDs => {
+        chartDs.data = useStatusLogScale ? compressedData(chartDs.originalData, compressedTicks) : chartDs.originalData;
+      });
+
+      statusChart.options.scales.y = useStatusLogScale
+        ? compressedAxisOptions(compressedTicks)
+        : { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } };
+      statusChart.update('none');
+
+      renderStatusLegend(data.datasets, colors);
     }
 
     function toggleStatusScale() {
@@ -1676,77 +1991,94 @@
       loadStatusCodes(activeBtn ? activeBtn.dataset.range : "hour");
     }
 
-    async function loadTopIPs() {
+    async function loadTopIPs(force = false) {
+      const key = "cache_top_ips";
+      if (!force) {
+        const cached = getLocalCache(key);
+        if (cached) {
+          populateTopIPs(cached.data);
+          if (cached.stale) {
+            fetchJson("/stats/top-ips?limit=8")
+              .then(data => {
+                populateTopIPs(data);
+                saveLocalCache(key, data);
+              })
+              .catch(err => console.error("Top IPs background refresh failed", err));
+          }
+          return;
+        }
+      }
+
       const container = document.getElementById("ip-chart-container");
-      if (container) container.style.opacity = "0.4";
+      if (container) container.classList.add("loading");
       try {
         const data = await fetchJson("/stats/top-ips?limit=8");
         cachedTopIpsData = data;
         populateTopIPs(data);
+        saveLocalCache(key, data);
       } catch (error) {
-        renderPanelError("ip-chart-container", error.message, "loadTopIPs()");
+        renderPanelError("ip-chart-container", error.message, "loadTopIPs(true)");
       } finally {
-        const container = document.getElementById("ip-chart-container");
-        if (container) container.style.opacity = "1";
+        if (container) container.classList.remove("loading");
       }
     }
 
     function populateTopIPs(data) {
-        cachedTopIpsData = data;
-        const counts = data.map(d => d.count);
-        const labels = data.map(d => d.ip);
-        
-        const compressedTicks = buildCompressedTicks(Math.max(...counts, 1));
-        const chartData = useIpLogScale ? compressedData(counts, compressedTicks) : counts;
+      cachedTopIpsData = data;
+      const counts = data.map(d => d.count);
+      const labels = data.map(d => d.ip);
 
-        if (ipChart) {
-          ipChart.destroy();
-        }
+      const compressedTicks = buildCompressedTicks(Math.max(...counts, 1));
+      const chartData = useIpLogScale ? compressedData(counts, compressedTicks) : counts;
 
-        const ctx = document.getElementById("ipChart").getContext("2d");
-        const gradient = ctx.createLinearGradient(0, 0, 300, 0);
-        gradient.addColorStop(0, '#38bdf8');
-        gradient.addColorStop(1, '#818cf8');
+      if (ipChart) {
+        ipChart.destroy();
+      }
 
-        ipChart = new Chart(ctx, {
-          type: "bar",
-          data: {
-            labels,
-            datasets: [{
-              label: "Requests",
-              originalData: counts,
-              data: chartData,
-              backgroundColor: gradient,
-              borderRadius: 6,
-              barThickness: 18
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            indexAxis: "y",
-            plugins: {
-              legend: { display: false },
-              tooltip: {
-                backgroundColor: '#0f172a',
-                borderColor: 'rgba(255, 255, 255, 0.1)',
-                borderWidth: 1,
-                callbacks: {
-                  label: ctx => ` Requests: ${ctx.dataset.originalData?.[ctx.dataIndex] ?? ctx.parsed.x}`
-                }
-              }
-            },
-            scales: {
-              x: useIpLogScale
-                ? compressedAxisOptions(compressedTicks)
-                : { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } },
-              y: { 
-                ticks: { color: "#9ca3af" },
-                grid: { display: false }
+      const ctx = document.getElementById("ipChart").getContext("2d");
+      const gradient = ctx.createLinearGradient(0, 0, 300, 0);
+      gradient.addColorStop(0, '#38bdf8');
+      gradient.addColorStop(1, '#818cf8');
+
+      ipChart = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [{
+            label: "Requests",
+            originalData: counts,
+            data: chartData,
+            backgroundColor: gradient,
+            borderRadius: 6,
+            barThickness: 18
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          indexAxis: "y",
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#0f172a',
+              borderColor: 'rgba(255, 255, 255, 0.1)',
+              borderWidth: 1,
+              callbacks: {
+                label: ctx => ` Requests: ${ctx.dataset.originalData?.[ctx.dataIndex] ?? ctx.parsed.x}`
               }
             }
+          },
+          scales: {
+            x: useIpLogScale
+              ? compressedAxisOptions(compressedTicks)
+              : { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } },
+            y: {
+              ticks: { color: "#9ca3af" },
+              grid: { display: false }
+            }
           }
-        });
+        }
+      });
     }
 
     function toggleIpScale() {
@@ -1759,16 +2091,44 @@
       }
     }
 
-    async function loadRightStats() {
-      Promise.all([
-        fetchJson("/stats/top-urls?limit=8").then(pathsData => {
-          populateTopUrls(pathsData);
-        }).catch(e => renderPanelError("top-paths-table", e.message)),
-        
-        fetchJson("/stats/status-codes").then(codesData => {
-          populateStatusCodesBreakdown(codesData);
-        }).catch(e => renderPanelError("error-codes-table", e.message))
-      ]);
+    async function loadRightStats(force = false) {
+      const key = "cache_right_stats";
+      if (!force) {
+        const cached = getLocalCache(key);
+        if (cached) {
+          populateTopUrls(cached.data.pathsData);
+          populateStatusCodesBreakdown(cached.data.codesData);
+          if (cached.stale) {
+            Promise.all([
+              fetchJson("/stats/top-urls?limit=8"),
+              fetchJson("/stats/status-codes")
+            ])
+              .then(([pathsData, codesData]) => {
+                populateTopUrls(pathsData);
+                populateStatusCodesBreakdown(codesData);
+                saveLocalCache(key, { pathsData, codesData });
+              })
+              .catch(err => console.error("Right stats background refresh failed", err));
+          }
+          return;
+        }
+      }
+
+      showPathsSkeleton();
+      showCodesSkeleton();
+
+      try {
+        const [pathsData, codesData] = await Promise.all([
+          fetchJson("/stats/top-urls?limit=8"),
+          fetchJson("/stats/status-codes")
+        ]);
+        populateTopUrls(pathsData);
+        populateStatusCodesBreakdown(codesData);
+        saveLocalCache(key, { pathsData, codesData });
+      } catch (error) {
+        renderPanelError("top-paths-table", error.message, "loadRightStats(true)");
+        renderPanelError("error-codes-table", error.message);
+      }
     }
 
     function populateTopUrls(pathsData) {
@@ -1784,12 +2144,12 @@
 
     function populateStatusCodesBreakdown(codesData) {
       const errors = codesData.filter(d => d.status >= 400);
-      
+
       if (errors.length === 0) {
         document.getElementById("error-codes-table").innerHTML = `<tr><td colspan="2" style="text-align:center; color: var(--success); padding: 14px;">No errors registered</td></tr>`;
         return;
       }
-      
+
       document.getElementById("error-codes-table").innerHTML = errors.map(d => {
         const col = d.status >= 500 ? 'var(--danger)' : 'var(--warning)';
         return `
@@ -1801,39 +2161,6 @@
       }).join("");
     }
 
-    async function loadDashboard() {
-      const trafficContainer = document.getElementById("traffic-chart-container");
-      const statusWrapper = document.getElementById("statusChartWrapper");
-      const ipContainer = document.getElementById("ip-chart-container");
-      
-      if (trafficContainer) trafficContainer.classList.add("loading");
-      if (statusWrapper) statusWrapper.classList.add("loading");
-      if (ipContainer) ipContainer.style.opacity = "0.4";
-      
-      try {
-        const data = await fetchJson("/stats/dashboard");
-        
-        populateSummary(data.summary);
-        populateThreatAndAnomalies(data.anomalies);
-        populateTopIPs(data.top_ips);
-        populateTrafficData(data.traffic);
-        populateStatusCodesData(data.status_over_time);
-        populateTopUrls(data.top_urls);
-        populateStatusCodesBreakdown(data.status_codes);
-      } catch (error) {
-        renderPanelError("traffic-chart-container", error.message, "loadDashboard()");
-        renderPanelError("statusChartWrapper", error.message);
-        renderPanelError("ip-chart-container", error.message);
-        renderPanelError("anomaly-rate-list", error.message);
-        renderPanelError("top-paths-table", error.message);
-        renderPanelError("error-codes-table", error.message);
-      } finally {
-        if (trafficContainer) trafficContainer.classList.remove("loading");
-        if (statusWrapper) statusWrapper.classList.remove("loading");
-        if (ipContainer) ipContainer.style.opacity = "1";
-      }
-    }
-
     function renderPaginationControls(currentPage, totalPages, totalCount, pageSize) {
       const container = document.getElementById("search-pagination");
       if (totalPages <= 1) {
@@ -1842,52 +2169,127 @@
       }
 
       let html = "";
-      
-      // Prev button
-      html += `<button onclick="runSearch(${currentPage - 1})" ${currentPage === 0 ? "disabled style='opacity:0.4; cursor:not-allowed;'" : ""} class="btn-secondary" style="padding: 6px 12px; font-size: 13px; border-radius: 6px;">Prev</button>`;
 
-      // Page numbers
+      html += `<button onclick="jumpToPage(${currentPage - 1}, ${pageSize})" ${currentPage === 0 ? "disabled style='opacity:0.4; cursor:not-allowed;'" : ""} class="btn-secondary" style="padding: 6px 12px; font-size: 13px; border-radius: 6px;">Prev</button>`;
+
       const range = 2;
       let startPage = Math.max(0, currentPage - range);
       let endPage = Math.min(totalPages - 1, currentPage + range);
 
       if (startPage > 0) {
-        html += `<button onclick="runSearch(0)" class="btn-secondary" style="padding: 6px 10px; font-size: 13px; border-radius: 6px;">1</button>`;
+        html += `<button onclick="jumpToPage(0, ${pageSize})" class="btn-secondary" style="padding: 6px 10px; font-size: 13px; border-radius: 6px;">1</button>`;
         if (startPage > 1) {
           html += `<span style="color:var(--text-secondary); padding: 0 4px; align-self: center;">...</span>`;
         }
       }
 
       for (let i = startPage; i <= endPage; i++) {
-        const activeStyle = i === currentPage 
+        const activeStyle = i === currentPage
           ? "background-color: var(--primary); color: white; border-color: var(--primary); font-weight: bold;"
           : "";
-        html += `<button onclick="runSearch(${i})" class="btn-secondary" style="padding: 6px 10px; font-size: 13px; border-radius: 6px; ${activeStyle}">${i + 1}</button>`;
+        html += `<button onclick="jumpToPage(${i}, ${pageSize})" class="btn-secondary" style="padding: 6px 10px; font-size: 13px; border-radius: 6px; ${activeStyle}">${i + 1}</button>`;
       }
 
       if (endPage < totalPages - 1) {
         if (endPage < totalPages - 2) {
           html += `<span style="color:var(--text-secondary); padding: 0 4px; align-self: center;">...</span>`;
         }
-        html += `<button onclick="runSearch(${totalPages - 1})" class="btn-secondary" style="padding: 6px 10px; font-size: 13px; border-radius: 6px;">${totalPages}</button>`;
+        html += `<button onclick="jumpToPage(${totalPages - 1}, ${pageSize})" class="btn-secondary" style="padding: 6px 10px; font-size: 13px; border-radius: 6px;">${totalPages}</button>`;
       }
 
-      // Next button
-      html += `<button onclick="runSearch(${currentPage + 1})" ${currentPage >= totalPages - 1 ? "disabled style='opacity:0.4; cursor:not-allowed;'" : ""} class="btn-secondary" style="padding: 6px 12px; font-size: 13px; border-radius: 6px;">Next</button>`;
+      html += `<button onclick="jumpToPage(${currentPage + 1}, ${pageSize})" ${currentPage >= totalPages - 1 ? "disabled style='opacity:0.4; cursor:not-allowed;'" : ""} class="btn-secondary" style="padding: 6px 12px; font-size: 13px; border-radius: 6px;">Next</button>`;
 
-      // Jump to page input
       html += `
-        <div style="display: inline-flex; align-items: center; gap: 6px; margin-left: 15px; border-left: 1px solid var(--border); padding-left: 15px;">
+        <div style="display: inline-flex; align-items: center; gap: 6px; margin-left: 15px; border-left: 1px solid var(--border-color); padding-left: 15px;">
           <span style="color:var(--text-secondary); font-size: 13px;">Jump to:</span>
           <input id="jump-page-input" type="number" min="1" max="${totalPages}" value="${currentPage + 1}" 
-            style="width: 55px; height: 28px; background: var(--panel-bg); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; padding: 0 4px; text-align: center; font-size: 13px;"
-            onkeydown="if(event.key === 'Enter') { const p = parseInt(this.value)-1; if(p>=0 && p<${totalPages}) runSearch(p); }">
-          <button onclick="const p = parseInt(document.getElementById('jump-page-input').value)-1; if(p>=0 && p<${totalPages}) runSearch(p);" 
+            style="width: 55px; height: 28px; background: var(--card-bg); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 6px; padding: 0 4px; text-align: center; font-size: 13px;"
+            onkeydown="if(event.key === 'Enter') { const p = parseInt(this.value)-1; if(p>=0 && p<${totalPages}) jumpToPage(p, ${pageSize}); }">
+          <button onclick="const p = parseInt(document.getElementById('jump-page-input').value)-1; if(p>=0 && p<${totalPages}) jumpToPage(p, ${pageSize});" 
             class="btn-secondary" style="padding: 4px 8px; font-size: 12px; border-radius: 6px; height: 28px; display: flex; align-items: center;">Go</button>
         </div>
       `;
 
       container.innerHTML = html;
+    }
+
+    function renderSearchRows(data, page, pageSize) {
+      if (data.length === 0) {
+        document.getElementById("search-results").innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);padding: 20px;">No matching records found</td></tr>`;
+        document.getElementById("search-count").textContent = "No results.";
+        document.getElementById("search-pagination").innerHTML = "";
+        return;
+      }
+
+      const statusColor = s => s >= 500 ? "var(--danger)" : s >= 400 ? "var(--warning)" : "var(--success)";
+      document.getElementById("search-results").innerHTML = data.map(r => `
+        <tr>
+          <td style="color:var(--primary); font-weight: 500;">${escapeHtml(r.ip)}</td>
+          <td style="color:var(--text-secondary); font-family: 'JetBrains Mono', monospace; font-size:12px;">${formatDateTime(r.time)}</td>
+          <td style="font-weight: 600; font-size: 13px;">${escapeHtml(r.method)}</td>
+          <td style="font-family: 'JetBrains Mono', monospace; font-size:13px; max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(r.path)}">${escapeHtml(r.path)}</td>
+          <td><span style="color:${statusColor(r.status)}; font-weight: 700;">${escapeHtml(r.status)}</span></td>
+          <td style="color:var(--text-secondary); font-family: 'JetBrains Mono', monospace; font-size:12px;">${r.size !== null ? r.size.toLocaleString() : '-'}</td>
+        </tr>
+      `).join("");
+
+      const startIdx = (page * pageSize) + 1;
+      const endIdx = Math.min((page + 1) * pageSize, currentTotalCount);
+      document.getElementById("search-count").textContent = `Showing ${startIdx.toLocaleString()}–${endIdx.toLocaleString()} of ${currentTotalCount.toLocaleString()} results`;
+      const totalPages = Math.max(Math.ceil(currentTotalCount / pageSize), 1);
+      renderPaginationControls(page, totalPages, currentTotalCount, pageSize);
+    }
+
+    async function jumpToPage(targetPage, pageSize) {
+      const totalPages = Math.max(Math.ceil(currentTotalCount / pageSize), 1);
+      if (targetPage < 0 || targetPage >= totalPages) return;
+
+      const ip = document.getElementById("search-ip").value.trim();
+      const path = document.getElementById("search-url").value.trim();
+      const status = document.getElementById("search-status").value;
+      const from = searchDateParam("search-from");
+      const to = searchDateParam("search-to");
+
+      // Show skeleton
+      const skeletonRow = `
+        <tr>
+          <td><div class="skeleton-line" style="width: 100px;"></div></td>
+          <td><div class="skeleton-line" style="width: 140px;"></div></td>
+          <td><div class="skeleton-line" style="width: 50px;"></div></td>
+          <td><div class="skeleton-line" style="width: 260px;"></div></td>
+          <td><div class="skeleton-line" style="width: 40px;"></div></td>
+          <td><div class="skeleton-line" style="width: 60px;"></div></td>
+        </tr>
+      `;
+      document.getElementById("search-results").innerHTML = skeletonRow.repeat(6);
+
+      try {
+        const params = new URLSearchParams({
+          page: String(targetPage),
+          page_size: String(pageSize),
+        });
+        if (ip) params.set("ip", ip);
+        if (path) params.set("path", path);
+        if (status) params.set("status", status);
+        if (from) params.set("time_from", from);
+        if (to) params.set("time_to", to);
+
+        const payload = await fetchJson(`/stats/search/jump?${params.toString()}`);
+        currentSearchPage = targetPage;
+        if (payload.total !== undefined && payload.total !== null) {
+          currentTotalCount = payload.total;
+        }
+        renderSearchRows(payload.rows, targetPage, pageSize);
+      } catch (error) {
+        if (error.message.includes("Cannot jump past")) {
+          alert(error.message);
+          renderPaginationControls(currentSearchPage, totalPages, currentTotalCount, pageSize);
+          // Reload the current page to clear skeleton
+          jumpToPage(currentSearchPage, pageSize);
+        } else {
+          renderPanelError("search-results", error.message);
+        }
+      }
     }
 
     async function runSearch(page = 0) {
@@ -1936,22 +2338,9 @@
           return;
         }
 
-        const statusColor = s => s >= 500 ? "var(--danger)" : s >= 400 ? "var(--warning)" : "var(--success)";
-        document.getElementById("search-results").innerHTML = data.map(r => `
-          <tr>
-            <td style="color:var(--primary); font-weight: 500;">${escapeHtml(r.ip)}</td>
-            <td style="color:var(--text-secondary); font-family: 'JetBrains Mono', monospace; font-size:12px;">${formatDateTime(r.time)}</td>
-            <td style="font-weight: 600; font-size: 13px;">${escapeHtml(r.method)}</td>
-            <td style="font-family: 'JetBrains Mono', monospace; font-size:13px; max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(r.path)}">${escapeHtml(r.path)}</td>
-            <td><span style="color:${statusColor(r.status)}; font-weight: 700;">${escapeHtml(r.status)}</span></td>
-            <td style="color:var(--text-secondary); font-family: 'JetBrains Mono', monospace; font-size:12px;">${r.size !== null ? r.size.toLocaleString() : '-'}</td>
-          </tr>
-        `).join("");
-
         const startIdx = (page * pageSize) + 1;
 
         if (payload.total === null) {
-          // Filtered query: count is loading asynchronously (and cached on backend)
           document.getElementById("search-count").textContent = `Showing ${startIdx.toLocaleString()}–${(startIdx + data.length - 1).toLocaleString()} of counting...`;
           document.getElementById("search-pagination").innerHTML = `<span style="color:var(--text-secondary); font-size: 13px; opacity: 0.7;">Loading pages...</span>`;
 
@@ -1964,11 +2353,8 @@
 
           fetchJson(`/stats/search/count?${countParams.toString()}`)
             .then(countPayload => {
-              const totalCount = countPayload.total || 0;
-              const totalPages = Math.max(Math.ceil(totalCount / pageSize), 1);
-              const endIdx = Math.min((page + 1) * pageSize, totalCount);
-              document.getElementById("search-count").textContent = `Showing ${startIdx.toLocaleString()}–${endIdx.toLocaleString()} of ${totalCount.toLocaleString()} results`;
-              renderPaginationControls(page, totalPages, totalCount, pageSize);
+              currentTotalCount = countPayload.total || 0;
+              renderSearchRows(data, page, pageSize);
             })
             .catch(err => {
               console.error("Failed to fetch search count:", err);
@@ -1976,12 +2362,8 @@
               document.getElementById("search-pagination").innerHTML = "";
             });
         } else {
-          // Unfiltered query: total count already returned by estimate
-          const totalCount = payload.total || 0;
-          const totalPages = Math.max(Math.ceil(totalCount / pageSize), 1);
-          const endIdx = Math.min((page + 1) * pageSize, totalCount);
-          document.getElementById("search-count").textContent = `Showing ${startIdx.toLocaleString()}–${endIdx.toLocaleString()} of ${totalCount.toLocaleString()} results`;
-          renderPaginationControls(page, totalPages, totalCount, pageSize);
+          currentTotalCount = payload.total || 0;
+          renderSearchRows(data, page, pageSize);
         }
       } catch (error) {
         renderPanelError("search-results", error.message);
@@ -2012,28 +2394,93 @@
       document.getElementById("search-pagination").innerHTML = "";
     }
 
-    async function loadSystemLogs(reset = false) {
-      const container = document.getElementById("system-logs");
-      try {
-        const url = reset ? "/stats/logs?reset=true" : "/stats/logs";
-        const data = await fetchJson(url);
-        
-        if (!data.lines || data.lines.length === 0) {
-          container.innerHTML = `<div class="terminal-row" style="color:var(--text-secondary);">No logs registered in system database.</div>`;
+    async function loadSystemLogs(force = false, reset = false) {
+      if (reset) {
+        const container = document.getElementById("system-logs");
+        container.innerHTML = `<div class="terminal-row" style="color:var(--text-secondary);">Clearing system logs...</div>`;
+        try {
+          await fetchJson("/stats/logs?reset=true");
+          container.innerHTML = `<div class="terminal-row" style="color:var(--success);">System logs cleared.</div>`;
+          localStorage.removeItem("cache_system_logs");
+        } catch (error) {
+          renderPanelError("system-logs", error.message, "loadSystemLogs(true, true)");
+        }
+        return;
+      }
+
+      const key = "cache_system_logs";
+      if (!force) {
+        const cached = getLocalCache(key);
+        if (cached) {
+          populateSystemLogs(cached.data);
+          if (cached.stale) {
+            fetchJson("/stats/logs")
+              .then(data => {
+                populateSystemLogs(data);
+                saveLocalCache(key, data);
+              })
+              .catch(err => console.error("System logs background refresh failed", err));
+          }
           return;
         }
+      }
 
-        const colorLine = line => {
-          const safeLine = escapeHtml(line);
-          if (line.includes("[ERROR]")) return `<div class="terminal-row" style="color:#f87171;">${safeLine}</div>`;
-          if (line.includes("[WARNING]")) return `<div class="terminal-row" style="color:#fbbf24;">${safeLine}</div>`;
-          if (line.includes("[INFO]")) return `<div class="terminal-row" style="color:#34d399;">${safeLine}</div>`;
-          return `<div class="terminal-row" style="color:#64748b;">${safeLine}</div>`;
-        };
-        container.innerHTML = data.lines.map(l => colorLine(l.trimEnd())).join("");
-        container.scrollTop = container.scrollHeight;
+      showSystemLogsSkeleton();
+      try {
+        const data = await fetchJson("/stats/logs");
+        populateSystemLogs(data);
+        saveLocalCache(key, data);
       } catch (error) {
-        renderPanelError("system-logs", error.message, "loadSystemLogs()");
+        renderPanelError("system-logs", error.message, "loadSystemLogs(true)");
+      }
+    }
+
+    function populateSystemLogs(data) {
+      const container = document.getElementById("system-logs");
+      if (!data.lines || data.lines.length === 0) {
+        container.innerHTML = `<div class="terminal-row" style="color:var(--text-secondary);">No logs registered in system database.</div>`;
+        return;
+      }
+
+      const colorLine = line => {
+        const safeLine = escapeHtml(line);
+        if (line.includes("[ERROR]")) return `<div class="terminal-row" style="color:#f87171;">${safeLine}</div>`;
+        if (line.includes("[WARNING]")) return `<div class="terminal-row" style="color:#fbbf24;">${safeLine}</div>`;
+        if (line.includes("[INFO]")) return `<div class="terminal-row" style="color:#34d399;">${safeLine}</div>`;
+        return `<div class="terminal-row" style="color:#64748b;">${safeLine}</div>`;
+      };
+      container.innerHTML = data.lines.map(l => colorLine(l.trimEnd())).join("");
+      container.scrollTop = container.scrollHeight;
+    }
+
+    async function reloadPanel(panelName) {
+      setReloadSpinner(panelName, true);
+      try {
+        if (panelName === 'summary') {
+          localStorage.removeItem("cache_summary");
+        } else if (panelName === 'anomalies') {
+          localStorage.removeItem("cache_anomalies");
+        } else if (panelName === 'traffic') {
+          const ip = document.getElementById("traffic-ip-search").value.trim();
+          localStorage.removeItem(`cache_traffic_${ip}`);
+        } else if (panelName === 'status_codes') {
+          const range = document.querySelector(".range-btn.active").dataset.range;
+          const limit = numberInputValue("status-limit", 48, 5, 500);
+          localStorage.removeItem(`cache_status_codes_${range}_${limit}`);
+        } else if (panelName === 'top_ips') {
+          localStorage.removeItem("cache_top_ips");
+        } else if (panelName === 'right_stats') {
+          localStorage.removeItem("cache_right_stats");
+        } else if (panelName === 'system_logs') {
+          localStorage.removeItem("cache_system_logs");
+        }
+        await loadPanel(panelName, true);
+      } catch (err) {
+        console.error(`Manual reload of ${panelName} failed:`, err);
+      } finally {
+        setTimeout(() => {
+          setReloadSpinner(panelName, false);
+        }, 300);
       }
     }
 
@@ -2062,13 +2509,44 @@
       runSearch(0);
     });
 
-    // Initial load
+    const PANELS = {
+      summary: (force) => loadSummary(force),
+      traffic: (force) => loadTraffic(document.getElementById("traffic-ip-search").value.trim(), force),
+      status_codes: (force) => loadStatusCodes(document.querySelector(".range-btn.active")?.dataset?.range || "hour", force),
+      anomalies: (force) => loadThreatAndAnomalies(force),
+      top_ips: (force) => loadTopIPs(force),
+      right_stats: (force) => loadRightStats(force),
+      system_logs: (force) => loadSystemLogs(force)
+    };
+
+    async function loadPanel(key, force = false) {
+      if (PANELS[key]) {
+        await PANELS[key](force);
+      }
+    }
+
+    // Hiển thị skeleton trước khi fetch
+    function showSkeletons() {
+      // Summary cards
+      ["total-requests", "unique-ips", "error-rate", "health-score"].forEach(id => {
+        document.getElementById(id).innerHTML =
+          `<div class="skeleton-line" style="width:80px; height:36px;"></div>`;
+      });
+
+      // Tables
+      ["anomaly-rate-list", "top-paths-table"].forEach(id => {
+        document.getElementById(id).innerHTML = Array(5).fill(`
+                <tr>
+                    <td><div class="skeleton-line" style="width:120px;"></div></td>
+                    <td><div class="skeleton-line" style="width:80px;"></div></td>
+                </tr>
+            `).join("");
+      });
+    }
+
     async function initDashboard() {
-      // 1. First load the dashboard widgets (all 7 main components) in a single request
-      await loadDashboard();
-      
-      // 2. Load system logs first, then search — sequential to avoid connection pool contention
-      await loadSystemLogs(true);
+      showSkeletons();  // ← hiển thị ngay, không chờ fetch
+      await Promise.all(Object.keys(PANELS).map(key => loadPanel(key)));
       await runSearch(0);
     }
 

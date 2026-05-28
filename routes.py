@@ -162,6 +162,29 @@ async def search_logs(
         raise HTTPException(status_code=400, detail="Invalid datetime format") from exc
 
 
+@app.get("/stats/search/jump")
+async def jump_to_page(
+    page: int = Query(..., ge=0),
+    page_size: int = Query(default=15, ge=1, le=500),
+    ip: str = None,
+    path: str = None,
+    status: int = None,
+    time_from: str = None,
+    time_to: str = None,
+):
+    """
+    Tính target_id cho page bất kỳ mà không cần OFFSET.
+    Dùng index scan trên id thay vì sequential scan.
+    """
+    try:
+        result = await stats_service.jump_to_page(
+            page, page_size, ip, path, status, time_from, time_to
+        )
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @app.get("/stats/search/count")
 async def search_logs_count(
     ip: str = None,

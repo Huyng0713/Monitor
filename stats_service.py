@@ -873,6 +873,86 @@ class StatsService:
             "has_more": len(rows) == limit,
         }
 
+    async def jump_to_page(
+        self,
+        page: int,
+        page_size: int,
+        ip: str | None = None,
+        path: str | None = None,
+        status: int | None = None,
+        time_from: str | None = None,
+        time_to: str | None = None,
+    ):
+        """
+        Tìm id của row đầu tiên ở page N mà không dùng OFFSET lớn.
+        Dùng keyset pagination kết hợp đảo chiều quét chỉ mục để đạt tốc độ tối đa.
+        """
+        offset = page * page_size
+
+        # Unfiltered: dùng id trực tiếp (nhanh nhất)
+        if not ip and not path and status is None and not time_from and not time_to:
+            async def _fetch_total():
+                async with self.connection_factory() as s:
+                    r = await s.execute(text("SELECT COUNT(*) FROM logs"))
+                    return r.scalar() or 0
+            
+            # Lấy total_count từ cache (60s TTL)
+            total_count = await self.db_cached("search_count_unfiltered", _fetch_total, ttl=60)
+            
+            if offset >= total_count:
+                return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
+
+            # Tối ưu hóa hướng quét chỉ mục để tránh scan sâu (CockroachDB offset anti-pattern)
+            if offset > total_count / 2:
+                # Quét từ dưới lên (ASC) để lấy offset nhỏ hơn
+                reverse_offset = total_count - offset - 1
+                if reverse_offset < 0:
+                    reverse_offset = 0
+                query = """
+                    SELECT id FROM logs
+                    ORDER BY id ASC
+                    LIMIT 1 OFFSET :reverse_offset
+                """
+                params = {"reverse_offset": reverse_offset}
+            else:
+                # Quét từ trên xuống (DESC)
+                query = """
+                    SELECT id FROM logs
+                    ORDER BY id DESC
+                    LIMIT 1 OFFSET :offset
+                """
+                params = {"offset": offset}
+                
+            async with self.connection_factory() as session:
+                result = await session.execute(text(query), params)
+                row = result.fetchone()
+            
+            if not row:
+                return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
+            
+            target_id = row[0]
+            
+            # Fetch page từ target_id
+            return await self.search_logs_keyset(
+                ip=None, path=None, status=None,
+                time_from=None, time_to=None,
+                limit=page_size,
+                cursor_id=target_id + 1,  # +1 vì keyset dùng id < cursor_id
+            )
+
+        # Filtered: không còn cách nào khác ngoài OFFSET
+        # Nhưng giới hạn không cho jump quá xa
+        MAX_FILTERED_OFFSET = 10_000
+        if offset > MAX_FILTERED_OFFSET:
+            raise ValueError(
+                f"Cannot jump past page {MAX_FILTERED_OFFSET // page_size} "
+                f"with active filters. Remove filters to jump further."
+            )
+        
+        return await self._search_logs_raw(
+            ip, path, status, time_from, time_to, page_size, offset
+        )
+
     def _period_expr(self, granularity: str, table_alias: str | None = None) -> str:
         unit = DATE_TRUNC_UNITS[granularity]
         fmt = TO_CHAR_FORMATS[granularity]
