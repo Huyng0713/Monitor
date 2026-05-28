@@ -88,16 +88,12 @@ class StatsService:
         else:
             db_age = 9999999
 
-        if db_val is not None and db_age < ttl and not force_refresh:
+        # Stale-While-Revalidate: always return stale value if we have it, and refresh in background if expired
+        if db_val is not None and not force_refresh:
             parsed_val = json.loads(db_val)
             self._cache[key] = (parsed_val, now)
-            return parsed_val
-
-        # Stale-While-Revalidate: return stale value if age is under 10 minutes and refresh in background
-        if db_val is not None and db_age < 600 and not force_refresh:
-            parsed_val = json.loads(db_val)
-            self._cache[key] = (parsed_val, now)
-            asyncio.create_task(self._refresh_stat_in_db(key, fetch_fn))
+            if db_age >= ttl:
+                asyncio.create_task(self._refresh_stat_in_db(key, fetch_fn))
             return parsed_val
 
         # Cold start/hard refresh: compute synchronously
@@ -357,7 +353,7 @@ class StatsService:
         params = {"time_threshold": time_threshold}
 
         query = """
-            WITH base_data AS NOT MATERIALIZED (
+            WITH base_data AS (
                 SELECT ip, status, date_trunc('minute', time) as minute
                 FROM logs
                 WHERE time >= :time_threshold
@@ -486,7 +482,7 @@ class StatsService:
                 ) h
             ),
             anomalies_cte AS (
-                WITH base_data AS NOT MATERIALIZED (
+                WITH base_data AS (
                     SELECT ip, status, date_trunc('minute', time) as minute
                     FROM logs, params p
                     WHERE time >= p.time_threshold

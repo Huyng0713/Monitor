@@ -143,10 +143,10 @@ def _engine_options() -> dict:
     }
     if IS_VERCEL:
         # NullPool: each serverless invocation gets its own connection
-        # command_timeout=30: allow for cross-region latency (US↔Singapore)
+        # command_timeout=120: allow for cross-region latency (US↔Singapore)
         # and CockroachDB Serverless cold-start resume (~5-10s)
         options.update({"poolclass": NullPool})
-        options["connect_args"]["command_timeout"] = 30
+        options["connect_args"]["command_timeout"] = 120
     else:
         options.update({"pool_size": 5, "max_overflow": 10, "pool_timeout": 30})
     return options
