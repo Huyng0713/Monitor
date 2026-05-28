@@ -35,6 +35,28 @@ class StatsService:
         self._cache_ttl = 300
         self._locks = {}
 
+    async def _execute_with_retry(self, operation_fn, is_write=False):
+        import asyncio
+        from sqlalchemy.exc import DBAPIError, OperationalError
+        from log import log_exception
+
+        max_retries = 3
+        delay = 0.5
+        for attempt in range(max_retries):
+            try:
+                return await operation_fn()
+            except (DBAPIError, OperationalError, OSError, ConnectionError) as e:
+                log_exception(
+                    f"Database {'write' if is_write else 'read'} transient error "
+                    f"(attempt {attempt + 1}/{max_retries})"
+                )
+                if attempt == max_retries - 1:
+                    raise
+                await asyncio.sleep(delay * (2 ** attempt))
+
+    async def _write_with_retry(self, write_fn):
+        return await self._execute_with_retry(write_fn, is_write=True)
+
     async def _cached(self, key, fn):
         now = time.time()
         cached = self._cache.get(key)
@@ -72,11 +94,10 @@ class StatsService:
         db_updated_at = None
 
         try:
-            async with self.connection_factory() as session:
-                row = await self.fetch_rows("SELECT value, updated_at FROM cached_stats WHERE key = :key", {"key": key}, session=session)
-                if row:
-                    db_val = row[0]["value"]
-                    db_updated_at = row[0]["updated_at"]
+            row = await self.fetch_rows("SELECT value, updated_at FROM cached_stats WHERE key = :key", {"key": key})
+            if row:
+                db_val = row[0]["value"]
+                db_updated_at = row[0]["updated_at"]
         except Exception:
             from log import log_exception
             log_exception("Failed to read from cached_stats table")
@@ -110,13 +131,15 @@ class StatsService:
 
             try:
                 serialized = json.dumps(result)
-                async with write_connection() as session:
-                    await session.execute(text("""
-                        INSERT INTO cached_stats (key, value, updated_at)
-                        VALUES (:key, :value, NOW())
-                        ON CONFLICT (key) DO UPDATE 
-                        SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at
-                    """), {"key": key, "value": serialized})
+                async def _write_op():
+                    async with write_connection() as session:
+                        await session.execute(text("""
+                            INSERT INTO cached_stats (key, value, updated_at)
+                            VALUES (:key, :value, NOW())
+                            ON CONFLICT (key) DO UPDATE 
+                            SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at
+                        """), {"key": key, "value": serialized})
+                await self._write_with_retry(_write_op)
             except Exception:
                 from log import log_exception
                 log_exception(f"Failed to write cached_stat {key} to DB")
@@ -134,13 +157,15 @@ class StatsService:
                 result = await fetch_fn()
                 self._cache[key] = (result, time.time())
                 serialized = json.dumps(result)
-                async with write_connection() as session:
-                    await session.execute(text("""
-                        INSERT INTO cached_stats (key, value, updated_at)
-                        VALUES (:key, :value, NOW())
-                        ON CONFLICT (key) DO UPDATE 
-                        SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at
-                    """), {"key": key, "value": serialized})
+                async def _write_op():
+                    async with write_connection() as session:
+                        await session.execute(text("""
+                            INSERT INTO cached_stats (key, value, updated_at)
+                            VALUES (:key, :value, NOW())
+                            ON CONFLICT (key) DO UPDATE 
+                            SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at
+                        """), {"key": key, "value": serialized})
+                await self._write_with_retry(_write_op)
         except Exception:
             from log import log_exception
             log_exception(f"Failed to refresh cached_stat {key} in background")
@@ -153,13 +178,15 @@ class StatsService:
         async def _store(cache_key, result):
             self._cache[cache_key] = (result, time.time())
             serialized = json.dumps(result)
-            async with write_connection() as session:
-                await session.execute(text("""
-                    INSERT INTO cached_stats (key, value, updated_at)
-                    VALUES (:key, :value, NOW())
-                    ON CONFLICT (key) DO UPDATE
-                    SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at
-                """), {"key": cache_key, "value": serialized})
+            async def _write_op():
+                async with write_connection() as session:
+                    await session.execute(text("""
+                        INSERT INTO cached_stats (key, value, updated_at)
+                        VALUES (:key, :value, NOW())
+                        ON CONFLICT (key) DO UPDATE
+                        SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at
+                    """), {"key": cache_key, "value": serialized})
+            await self._write_with_retry(_write_op)
 
         try:
             for gran in ["hour", "day", "minute"]:
@@ -186,34 +213,42 @@ class StatsService:
 
     async def clear_system_logs(self):
         from db import write_connection
-        async with write_connection() as session:
-            await session.execute(text("TRUNCATE system_logs"))
+        async def _write_op():
+            async with write_connection() as session:
+                await session.execute(text("TRUNCATE system_logs"))
+        await self._write_with_retry(_write_op)
 
     async def fetch_scalar(self, query: str, params: dict | None = None, session = None) -> int:
-        if session:
-            result = await session.execute(text(query), params or {})
-            value = result.scalar()
+        async def _op():
+            if session:
+                result = await session.execute(text(query), params or {})
+                value = result.scalar()
+                return int(value or 0)
+            async with self.connection_factory() as session_ctx:
+                result = await session_ctx.execute(text(query), params or {})
+                value = result.scalar()
             return int(value or 0)
-        async with self.connection_factory() as session_ctx:
-            result = await session_ctx.execute(text(query), params or {})
-            value = result.scalar()
-        return int(value or 0)
+        return await self._execute_with_retry(_op)
 
     async def fetch_val(self, query: str, params: dict | None = None, session = None):
-        if session:
-            result = await session.execute(text(query), params or {})
-            return result.scalar()
-        async with self.connection_factory() as session_ctx:
-            result = await session_ctx.execute(text(query), params or {})
-            return result.scalar()
+        async def _op():
+            if session:
+                result = await session.execute(text(query), params or {})
+                return result.scalar()
+            async with self.connection_factory() as session_ctx:
+                result = await session_ctx.execute(text(query), params or {})
+                return result.scalar()
+        return await self._execute_with_retry(_op)
 
     async def fetch_rows(self, query: str, params: dict | None = None, session = None):
-        if session:
-            result = await session.execute(text(query), params or {})
-            return result.mappings().all()
-        async with self.connection_factory() as session_ctx:
-            result = await session_ctx.execute(text(query), params or {})
-            return result.mappings().all()
+        async def _op():
+            if session:
+                result = await session.execute(text(query), params or {})
+                return result.mappings().all()
+            async with self.connection_factory() as session_ctx:
+                result = await session_ctx.execute(text(query), params or {})
+                return result.mappings().all()
+        return await self._execute_with_retry(_op)
 
     async def get_max_time(self):
         return await self._cached("max_time", self._fetch_max_time)
@@ -244,9 +279,8 @@ class StatsService:
                 (SELECT COUNT(*) FROM unique_ips) AS unique_ips
             FROM counts c
         """
-        async with self.connection_factory() as session:
-            res = await session.execute(text(query))
-            row = res.mappings().one()
+        rows = await self.fetch_rows(query)
+        row = rows[0]
         return {
             "total_requests": row["total_requests"],
             "unique_ips": row["unique_ips"],
@@ -293,39 +327,38 @@ class StatsService:
         unit = DATE_TRUNC_UNITS[granularity]
         unit_delta = TIMEDELTA_UNITS[granularity]
         
-        async with self.connection_factory() as session:
-            if ip:
-                max_time_query = "SELECT time FROM logs WHERE ip = :ip ORDER BY time DESC LIMIT 1"
-                max_time = await self.fetch_val(max_time_query, {"ip": ip}, session=session)
-                if not max_time:
-                    max_time = datetime.now(timezone.utc)
-            else:
-                max_time = await self.get_max_time()
+        if ip:
+            max_time_query = "SELECT time FROM logs WHERE ip = :ip ORDER BY time DESC LIMIT 1"
+            max_time = await self.fetch_val(max_time_query, {"ip": ip})
+            if not max_time:
+                max_time = datetime.now(timezone.utc)
+        else:
+            max_time = await self.get_max_time()
 
-            start_time = max_time - (limit + offset - 1) * unit_delta
-            end_time = max_time - offset * unit_delta
+        start_time = max_time - (limit + offset - 1) * unit_delta
+        end_time = max_time - offset * unit_delta
 
-            params: dict[str, object] = {
-                "start_time": start_time,
-                "end_time": end_time,
-            }
-            where_clause_ip_and = ""
-            if ip:
-                where_clause_ip_and = "AND l.ip = :ip"
-                params["ip"] = ip
+        params: dict[str, object] = {
+            "start_time": start_time,
+            "end_time": end_time,
+        }
+        where_clause_ip_and = ""
+        if ip:
+            where_clause_ip_and = "AND l.ip = :ip"
+            params["ip"] = ip
 
-            query = f"""
-                SELECT
-                    date_trunc('{unit}', l.time) AS period_raw,
-                    COUNT(*) AS count
-                FROM logs l
-                WHERE l.time >= :start_time
-                  AND l.time <= :end_time
-                  {where_clause_ip_and}
-                GROUP BY 1
-                ORDER BY 1
-            """
-            rows = await self.fetch_rows(query, params, session=session)
+        query = f"""
+            SELECT
+                date_trunc('{unit}', l.time) AS period_raw,
+                COUNT(*) AS count
+            FROM logs l
+            WHERE l.time >= :start_time
+              AND l.time <= :end_time
+              {where_clause_ip_and}
+            GROUP BY 1
+            ORDER BY 1
+        """
+        rows = await self.fetch_rows(query, params)
 
         # Format period string in Python for faster performance
         def format_period_py(dt: datetime, gran: str) -> str:
@@ -384,19 +417,18 @@ class StatsService:
                 (SELECT coalesce(json_agg(c5), '[]'::json) FROM (SELECT ip, count FROM many_500 ORDER BY count DESC) c5) AS many_500s
         """
         import json
-        async with self.connection_factory() as session:
-            result = await session.execute(text(query), params)
-            row = result.mappings().one()
-            high_freq = row["high_frequency"]
-            many_404 = row["many_404s"]
-            many_500 = row["many_500s"]
-            
-            if isinstance(high_freq, str):
-                high_freq = json.loads(high_freq)
-            if isinstance(many_404, str):
-                many_404 = json.loads(many_404)
-            if isinstance(many_500, str):
-                many_500 = json.loads(many_500)
+        rows = await self.fetch_rows(query, params)
+        row = rows[0]
+        high_freq = row["high_frequency"]
+        many_404 = row["many_404s"]
+        many_500 = row["many_500s"]
+        
+        if isinstance(high_freq, str):
+            high_freq = json.loads(high_freq)
+        if isinstance(many_404, str):
+            many_404 = json.loads(many_404)
+        if isinstance(many_500, str):
+            many_500 = json.loads(many_500)
 
         return {
             "high_frequency": high_freq,
@@ -523,9 +555,7 @@ class StatsService:
                 'anomalies', (SELECT row_to_json(a) FROM anomalies_cte a)
             ) AS result;
         """
-        async with self.connection_factory() as session:
-            res = await session.execute(text(query))
-            raw_result = res.scalar()
+        raw_result = await self.fetch_val(query)
 
         # Format status_over_time in Python to labels/datasets format
         max_time_str = raw_result.get("max_time")
@@ -610,8 +640,7 @@ class StatsService:
             "start_time": start_time,
             "end_time_exclusive": end_time_exclusive
         }
-        async with self.connection_factory() as session:
-            rows = await self.fetch_rows(query, params, session=session)
+        rows = await self.fetch_rows(query, params)
 
         # Map DB results by formatted period string and status
         db_data = {}
@@ -658,9 +687,7 @@ class StatsService:
 
     async def _run_page_query(self, query: str, params: dict) -> list:
         """Execute a paginated SELECT and return list of row mappings."""
-        async with self.connection_factory() as session:
-            result = await session.execute(text(query), params)
-            return result.mappings().all()
+        return await self.fetch_rows(query, params)
 
     async def _search_logs_raw(self, ip, path, status, time_from, time_to, limit, offset=0):
         is_unfiltered = not ip and not path and status is None and not time_from and not time_to
@@ -679,9 +706,7 @@ class StatsService:
                 ORDER BY l.id DESC
             """
             async def _fetch_total():
-                async with self.connection_factory() as s:
-                    r = await s.execute(text("SELECT COUNT(*) FROM logs"))
-                    return r.scalar() or 0
+                return await self.fetch_scalar("SELECT COUNT(*) FROM logs")
 
             total, rows_result = await asyncio.gather(
                 self.db_cached("search_count_unfiltered", _fetch_total, ttl=60),
@@ -722,10 +747,8 @@ class StatsService:
                 ) temp ON l.id = temp.id
                 ORDER BY l.id DESC
             """
-            async with self.connection_factory() as session:
-                result = await session.execute(text(query), params)
-                rows = result.mappings().all()
-                total = None  # Frontend will request count asynchronously
+            rows = await self.fetch_rows(query, params)
+            total = None  # Frontend will request count asynchronously
 
         return {
             "rows": [
@@ -747,9 +770,7 @@ class StatsService:
         if is_unfiltered:
             # CockroachDB-compatible: cache COUNT(*) for 60s to keep it fast
             async def _count_all():
-                async with self.connection_factory() as session:
-                    result = await session.execute(text("SELECT COUNT(*) FROM logs"))
-                    return result.scalar() or 0
+                return await self.fetch_scalar("SELECT COUNT(*) FROM logs")
             return await self.db_cached("search_count_unfiltered", _count_all, ttl=60)
 
         # Caching the count for filtered queries to make subsequent pagination instant
@@ -783,9 +804,7 @@ class StatsService:
         where_sql = " AND ".join(where_clauses) or "1=1"
         query = f"SELECT COUNT(*) FROM logs WHERE {where_sql}"
         
-        async with self.connection_factory() as session:
-            result = await session.execute(text(query), params)
-            return result.scalar() or 0
+        return await self.fetch_scalar(query, params)
 
     async def search_logs_keyset(
         self,
@@ -845,9 +864,7 @@ class StatsService:
             ORDER BY l.id DESC
         """
 
-        async with self.connection_factory() as session:
-            result = await session.execute(text(query), params)
-            rows = result.mappings().all()
+        rows = await self.fetch_rows(query, params)
 
         if not rows:
             return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
@@ -892,9 +909,7 @@ class StatsService:
         # Unfiltered: dùng id trực tiếp (nhanh nhất)
         if not ip and not path and status is None and not time_from and not time_to:
             async def _fetch_total():
-                async with self.connection_factory() as s:
-                    r = await s.execute(text("SELECT COUNT(*) FROM logs"))
-                    return r.scalar() or 0
+                return await self.fetch_scalar("SELECT COUNT(*) FROM logs")
             
             # Lấy total_count từ cache (60s TTL)
             total_count = await self.db_cached("search_count_unfiltered", _fetch_total, ttl=60)
@@ -923,14 +938,9 @@ class StatsService:
                 """
                 params = {"offset": offset}
                 
-            async with self.connection_factory() as session:
-                result = await session.execute(text(query), params)
-                row = result.fetchone()
-            
-            if not row:
+            target_id = await self.fetch_val(query, params)
+            if target_id is None:
                 return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
-            
-            target_id = row[0]
             
             # Fetch page từ target_id
             return await self.search_logs_keyset(

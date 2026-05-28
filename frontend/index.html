@@ -782,8 +782,11 @@
       </svg>
       Summary Overview
     </h2>
-    <button class="reload-btn" id="reload-btn-summary" onclick="reloadPanel('summary')"
-      title="Reload Summary">🔄</button>
+    <button class="reload-btn" id="reload-btn-summary" onclick="reloadPanel('summary')" title="Reload Summary">
+      <svg class="refresh-icon" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H17" />
+      </svg>
+    </button>
   </div>
   <div class="summary">
     <div class="card">
@@ -810,8 +813,11 @@
       <div class="threat-title">
         <h2 style="color: var(--danger); font-size: 20px; display: inline-flex; align-items: center; gap: 10px;">
           <span class="pulse-indicator"></span> THREAT & ANOMALY DETECTION
-          <button class="reload-btn" id="reload-btn-anomalies" onclick="reloadPanel('anomalies')"
-            title="Reload Anomalies" style="color: var(--danger); font-size: 14px;">🔄</button>
+          <button class="reload-btn" id="reload-btn-anomalies" onclick="reloadPanel('anomalies')" title="Reload Anomalies" style="color: var(--danger); font-size: 14px; display: inline-flex; align-items: center; justify-content: center;">
+            <svg class="refresh-icon" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H17" />
+            </svg>
+          </button>
         </h2>
         <p style="color: var(--text-secondary); font-size: 13px; margin-top: 4px;">Potential issues or scanner patterns
           flagged over the last 24 hours.</p>
@@ -980,8 +986,11 @@
             </path>
           </svg>
           Traffic Speed (Requests / Hour)
-          <button class="reload-btn" id="reload-btn-traffic" onclick="reloadPanel('traffic')"
-            title="Reload Traffic">🔄</button>
+          <button class="reload-btn" id="reload-btn-traffic" onclick="reloadPanel('traffic')" title="Reload Traffic">
+            <svg class="refresh-icon" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H17" />
+            </svg>
+          </button>
         </h2>
         <div style="display:flex; gap:8px; align-items:center;">
           <input id="traffic-ip-search" type="text" placeholder="Filter by IP..." class="search-field"
@@ -1028,8 +1037,11 @@
             </path>
           </svg>
           Status Codes Over Time
-          <button class="reload-btn" id="reload-btn-status_codes" onclick="reloadPanel('status_codes')"
-            title="Reload Status Codes">🔄</button>
+          <button class="reload-btn" id="reload-btn-status_codes" onclick="reloadPanel('status_codes')" title="Reload Status Codes">
+            <svg class="refresh-icon" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H17" />
+            </svg>
+          </button>
         </h2>
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
           <div class="btn-group">
@@ -1084,8 +1096,11 @@
             </path>
           </svg>
           Top Requesting IPs
-          <button class="reload-btn" id="reload-btn-top_ips" onclick="reloadPanel('top_ips')"
-            title="Reload Top IPs">🔄</button>
+          <button class="reload-btn" id="reload-btn-top_ips" onclick="reloadPanel('top_ips')" title="Reload Top IPs">
+            <svg class="refresh-icon" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H17" />
+            </svg>
+          </button>
         </h2>
         <button id="ip-scale-toggle" class="toggle-btn" onclick="toggleIpScale()"
           style="height:32px; padding:0 10px; font-size:12px;">Log Scale</button>
@@ -1118,8 +1133,11 @@
           <button id="tab-error-codes" class="threat-tab-btn" onclick="switchRightTab('codes')" style="flex:1;">Errors
             Breakdown</button>
         </div>
-        <button class="reload-btn" id="reload-btn-right_stats" onclick="reloadPanel('right_stats')"
-          title="Reload Paths & Errors">🔄</button>
+        <button class="reload-btn" id="reload-btn-right_stats" onclick="reloadPanel('right_stats')" title="Reload Paths & Errors">
+          <svg class="refresh-icon" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H17" />
+          </svg>
+        </button>
       </div>
 
       <!-- Panel Top Paths -->
@@ -1175,7 +1193,10 @@
       <div style="display:flex; gap:8px;">
         <button onclick="reloadPanel('system_logs')" class="btn-secondary" id="reload-btn-system_logs"
           style="height:32px; padding:0 12px; font-size:12px; display:inline-flex; align-items:center; gap:6px;">
-          <span class="refresh-icon">🔄</span> Refresh
+          <svg class="refresh-icon" style="width: 12px; height: 12px; display: inline-block; vertical-align: middle;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H17" />
+          </svg>
+          Refresh
         </button>
       </div>
     </div>
@@ -1261,13 +1282,9 @@
     }
 
     function setReloadSpinner(panelName, loading) {
-      let el;
-      if (panelName === 'system_logs') {
-        el = document.querySelector("#reload-btn-system_logs .refresh-icon");
-      } else {
-        el = document.getElementById(`reload-btn-${panelName}`);
-      }
-      if (!el) return;
+      const btn = document.getElementById(`reload-btn-${panelName}`);
+      if (!btn) return;
+      const el = btn.querySelector(".refresh-icon") || btn;
       if (loading) {
         el.classList.add("spinning");
       } else {
