@@ -1100,11 +1100,11 @@
           <div class="custom-range" style="display: flex; flex-direction: column; gap: 8px;">
             <div style="display: flex; flex-direction: column; gap: 4px;">
               <label style="font-size: 11px; color: var(--text-secondary);">Start Date</label>
-              <input id="search-from" class="search-field" type="text" style="padding: 0 12px; height: 38px;" title="Start Date" placeholder="DD/MM/YYYY HH:mm">
+              <input id="search-from" class="search-field" type="text" style="padding: 0 12px; height: 38px;" title="Start Date" placeholder="DD/MM/YYYY HH:mm:ss">
             </div>
             <div style="display: flex; flex-direction: column; gap: 4px;">
               <label style="font-size: 11px; color: var(--text-secondary);">End Date</label>
-              <input id="search-to" class="search-field" type="text" style="padding: 0 12px; height: 38px;" title="End Date" placeholder="DD/MM/YYYY HH:mm">
+              <input id="search-to" class="search-field" type="text" style="padding: 0 12px; height: 38px;" title="End Date" placeholder="DD/MM/YYYY HH:mm:ss">
             </div>
             <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;">
               <button type="button" class="preset-btn" style="padding: 6px 12px; font-size: 12px;" onclick="closeDateRangeMenu()">Cancel</button>
@@ -2774,8 +2774,8 @@
 
       if (unit !== 'all') {
         const fromDate = now.subtract(value, unit);
-        fromVal = fromDate.format("YYYY-MM-DDTHH:mm");
-        toVal = now.format("YYYY-MM-DDTHH:mm");
+        fromVal = fromDate.format("YYYY-MM-DDTHH:mm:ss");
+        toVal = now.format("YYYY-MM-DDTHH:mm:ss");
         
         if (unit === 'minute') label = `Last ${value}m`;
         else if (unit === 'hour') label = `Last ${value}h`;
@@ -2812,8 +2812,8 @@
       
       let label = "Custom Range";
       if (fromVal || toVal) {
-        const startText = fromVal ? dayjs(fromVal, "DD/MM/YYYY HH:mm").format("DD/MM/YYYY HH:mm") : "...";
-        const endText = toVal ? dayjs(toVal, "DD/MM/YYYY HH:mm").format("DD/MM/YYYY HH:mm") : "...";
+        const startText = fromVal ? dayjs(fromVal, "DD/MM/YYYY HH:mm:ss").format("DD/MM/YYYY HH:mm:ss") : "...";
+        const endText = toVal ? dayjs(toVal, "DD/MM/YYYY HH:mm:ss").format("DD/MM/YYYY HH:mm:ss") : "...";
         label = `${startText} - ${endText}`;
       } else {
         label = "All Time";
@@ -2866,8 +2866,8 @@
           if (!fromVal && !toVal) {
             updateDateRangeUI("Time Range...");
           } else {
-            const startText = fromVal ? dayjs(fromVal, "DD/MM/YYYY HH:mm").format("DD/MM/YYYY HH:mm") : "...";
-            const endText = toVal ? dayjs(toVal, "DD/MM/YYYY HH:mm").format("DD/MM/YYYY HH:mm") : "...";
+            const startText = fromVal ? dayjs(fromVal, "DD/MM/YYYY HH:mm:ss").format("DD/MM/YYYY HH:mm:ss") : "...";
+            const endText = toVal ? dayjs(toVal, "DD/MM/YYYY HH:mm:ss").format("DD/MM/YYYY HH:mm:ss") : "...";
             updateDateRangeUI(`${startText} - ${endText}`);
           }
         }
@@ -3082,12 +3082,14 @@
       // Initialize flatpickr on search date fields
       flatpickr("#search-from", {
         enableTime: true,
-        dateFormat: "d/m/Y H:i",
+        enableSeconds: true,
+        dateFormat: "d/m/Y H:i:S",
         time_24hr: true,
       });
       flatpickr("#search-to", {
         enableTime: true,
-        dateFormat: "d/m/Y H:i",
+        enableSeconds: true,
+        dateFormat: "d/m/Y H:i:S",
         time_24hr: true,
       });
 
