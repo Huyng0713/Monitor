@@ -14,7 +14,7 @@ async def main():
     total_count = await service.fetch_scalar("SELECT COUNT(*) FROM logs")
     print(f"Current logs count: {total_count:,}")
 
-    target_limit = 300000
+    target_limit = 5000000
     if total_count <= target_limit:
         print(f"Current count {total_count:,} is within target limit {target_limit:,}. No pruning needed.")
         return

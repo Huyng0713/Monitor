@@ -141,7 +141,7 @@ def _engine_options() -> dict:
         ssl_ctx = ssl.create_default_context()
 
     options = {
-        "pool_pre_ping": False,
+        "pool_pre_ping": True,
         "pool_recycle": 120,
         "connect_args": {
             "statement_cache_size": 0,

@@ -370,10 +370,57 @@
     /* Inputs */
     .search-toolbar {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr 1.2fr 1.2fr auto auto;
+      grid-template-columns: 1fr 1fr 1fr 2fr auto auto;
       gap: 12px;
       align-items: center;
       margin-bottom: 24px;
+    }
+
+    /* Date Range Dropdown Styling */
+    .date-range-menu {
+      display: flex;
+      visibility: hidden;
+      opacity: 0;
+      transform: translateY(-10px);
+      transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
+      position: absolute;
+      top: 48px;
+      right: 0;
+      background: rgba(11, 19, 41, 0.95); /* Matches var(--bg-secondary) with transparency */
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 16px;
+      width: 320px;
+      box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.6);
+      z-index: 1000;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .date-range-menu.open {
+      visibility: visible;
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .preset-btn {
+      padding: 6px 10px;
+      font-size: 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 6px;
+      color: var(--text-primary);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-family: inherit;
+    }
+
+    .preset-btn:hover {
+      background: rgba(56, 189, 248, 0.08) !important;
+      border-color: var(--primary) !important;
+      color: var(--primary) !important;
     }
 
     .search-control {
@@ -428,6 +475,20 @@
     .search-clear:hover {
       color: var(--text-primary);
       background: rgba(255, 255, 255, 0.08);
+    }
+
+    /* Style for datetime-local search inputs */
+    .search-field[type="datetime-local"] {
+      padding-right: 56px;
+    }
+    .search-field[type="datetime-local"]::-webkit-calendar-picker-indicator {
+      filter: invert(1);
+      cursor: pointer;
+      opacity: 0.55;
+      transition: opacity 0.2s ease;
+    }
+    .search-field[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
+      opacity: 0.9;
     }
 
     /* Tables */
@@ -957,13 +1018,43 @@
         </select>
         <button class="search-clear" onclick="clearSearchField('search-status')" title="Clear status">×</button>
       </div>
-      <div class="search-control">
-        <input id="search-from" class="search-field" type="text" placeholder="Start Date (dd/mm/yyyy hh:mm)...">
-        <button class="search-clear" onclick="clearSearchField('search-from')" title="Clear date">×</button>
-      </div>
-      <div class="search-control">
-        <input id="search-to" class="search-field" type="text" placeholder="End Date (dd/mm/yyyy hh:mm)...">
-        <button class="search-clear" onclick="clearSearchField('search-to')" title="Clear date">×</button>
+      <!-- Consolidated Date Range Dropdown -->
+      <div class="search-control date-range-container" style="position: relative;">
+        <button type="button" id="date-range-trigger" class="search-field" style="text-align: left; display: flex; align-items: center; justify-content: space-between; cursor: pointer; padding-right: 40px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" onclick="toggleDateRangeMenu(event)">
+          <span id="date-range-label" style="color: var(--text-secondary); pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Time Range...</span>
+          <svg style="width: 16px; height: 16px; opacity: 0.6; flex-shrink: 0; color: var(--text-secondary); pointer-events: none;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+          </svg>
+        </button>
+        <button type="button" id="date-range-clear" class="search-clear" onclick="clearDateRange(event)" title="Clear date range" style="right: 36px; display: none;">×</button>
+        
+        <div id="date-range-menu" class="date-range-menu" onclick="event.stopPropagation()">
+          <div style="font-weight: 600; font-size: 13px; color: var(--text-secondary); margin-bottom: 6px;">Presets</div>
+          <div class="presets-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px;">
+            <button type="button" class="preset-btn" onclick="setDatePreset(15, 'minute')">15m</button>
+            <button type="button" class="preset-btn" onclick="setDatePreset(1, 'hour')">1h</button>
+            <button type="button" class="preset-btn" onclick="setDatePreset(24, 'hour')">24h</button>
+            <button type="button" class="preset-btn" onclick="setDatePreset(7, 'day')">7d</button>
+            <button type="button" class="preset-btn" onclick="setDatePreset(30, 'day')">30d</button>
+            <button type="button" class="preset-btn" onclick="setDatePreset(0, 'all')">All</button>
+          </div>
+          
+          <div style="font-weight: 600; font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 12px;">Custom Range</div>
+          <div class="custom-range" style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <label style="font-size: 11px; color: var(--text-secondary);">Start Date</label>
+              <input id="search-from" class="search-field" type="datetime-local" style="padding: 0 12px; height: 38px;" title="Start Date">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <label style="font-size: 11px; color: var(--text-secondary);">End Date</label>
+              <input id="search-to" class="search-field" type="datetime-local" style="padding: 0 12px; height: 38px;" title="End Date">
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;">
+              <button type="button" class="preset-btn" style="padding: 6px 12px; font-size: 12px;" onclick="closeDateRangeMenu()">Cancel</button>
+              <button type="button" class="preset-btn" style="padding: 6px 12px; font-size: 12px; background: var(--primary); border-color: var(--primary); color: white;" onclick="applyCustomDateRange()">Apply</button>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="search-control" style="width: 80px;">
         <input id="search-page-size" class="search-field" type="number" value="15" min="1" max="500"
@@ -2572,11 +2663,119 @@
       }
     }
 
+    function toggleDateRangeMenu(event) {
+      if (event) event.stopPropagation();
+      const menu = document.getElementById('date-range-menu');
+      if (menu) {
+        menu.classList.toggle('open');
+      }
+    }
+
+    function closeDateRangeMenu() {
+      const menu = document.getElementById('date-range-menu');
+      if (menu) {
+        menu.classList.remove('open');
+      }
+    }
+
+    function updateDateRangeUI(label) {
+      const labelEl = document.getElementById("date-range-label");
+      const clearBtn = document.getElementById("date-range-clear");
+      if (labelEl) {
+        labelEl.textContent = label;
+        if (label !== "Time Range..." && label !== "All Time") {
+          labelEl.style.color = "var(--primary)";
+          if (clearBtn) clearBtn.style.display = "flex";
+        } else {
+          labelEl.style.color = "var(--text-secondary)";
+          if (clearBtn) clearBtn.style.display = "none";
+        }
+      }
+    }
+
+    function setDatePreset(value, unit) {
+      const now = dayjs();
+      let fromVal = "";
+      let toVal = "";
+      let label = "Time Range...";
+
+      if (unit !== 'all') {
+        const fromDate = now.subtract(value, unit);
+        fromVal = fromDate.format("YYYY-MM-DDTHH:mm");
+        toVal = now.format("YYYY-MM-DDTHH:mm");
+        
+        if (unit === 'minute') label = `Last ${value}m`;
+        else if (unit === 'hour') label = `Last ${value}h`;
+        else if (unit === 'day') label = `Last ${value}d`;
+      } else {
+        label = "All Time";
+      }
+
+      const fromInput = document.getElementById("search-from");
+      const toInput = document.getElementById("search-to");
+      if (fromInput) fromInput.value = fromVal;
+      if (toInput) toInput.value = toVal;
+
+      updateDateRangeUI(label);
+      closeDateRangeMenu();
+      runSearch(0);
+    }
+
+    function applyCustomDateRange() {
+      const fromVal = document.getElementById("search-from").value;
+      const toVal = document.getElementById("search-to").value;
+      
+      let label = "Custom Range";
+      if (fromVal || toVal) {
+        const startText = fromVal ? dayjs(fromVal).format("MM/DD HH:mm") : "...";
+        const endText = toVal ? dayjs(toVal).format("MM/DD HH:mm") : "...";
+        label = `${startText} - ${endText}`;
+      } else {
+        label = "All Time";
+      }
+
+      updateDateRangeUI(label);
+      closeDateRangeMenu();
+      runSearch(0);
+    }
+
+    function clearDateRange(event) {
+      if (event) event.stopPropagation();
+      const fromInput = document.getElementById("search-from");
+      const toInput = document.getElementById("search-to");
+      if (fromInput) fromInput.value = "";
+      if (toInput) toInput.value = "";
+      updateDateRangeUI("Time Range...");
+      closeDateRangeMenu();
+      runSearch(0);
+    }
+
+    // Close date range dropdown when clicking outside
+    window.addEventListener('click', function(event) {
+      const container = document.querySelector('.date-range-container');
+      const menu = document.getElementById('date-range-menu');
+      if (menu && menu.classList.contains('open') && container && !container.contains(event.target)) {
+        menu.classList.remove('open');
+      }
+    });
+
     function clearSearchField(id) {
       const el = document.getElementById(id);
       if (el) {
         el.value = "";
         if (id === 'search-status') el.selectedIndex = 0;
+        
+        if (id === 'search-from' || id === 'search-to') {
+          const fromVal = document.getElementById("search-from")?.value;
+          const toVal = document.getElementById("search-to")?.value;
+          if (!fromVal && !toVal) {
+            updateDateRangeUI("Time Range...");
+          } else {
+            const startText = fromVal ? dayjs(fromVal).format("MM/DD HH:mm") : "...";
+            const endText = toVal ? dayjs(toVal).format("MM/DD HH:mm") : "...";
+            updateDateRangeUI(`${startText} - ${endText}`);
+          }
+        }
       }
     }
 
@@ -2589,9 +2788,7 @@
       searchCursors = [null];
       searchCursorIds = [null];
       currentSearchPage = 0;
-      document.getElementById("search-results").innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);">Enter search criteria or click search to browse all logs.</td></tr>`;
-      document.getElementById("search-count").textContent = "";
-      document.getElementById("search-pagination").innerHTML = "";
+      runSearch(0);
     }
 
     async function loadSystemLogs(force = false, reset = false) {
