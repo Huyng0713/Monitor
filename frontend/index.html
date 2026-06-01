@@ -2627,6 +2627,11 @@
       `;
       document.getElementById("search-results").innerHTML = skeletonRow.repeat(6);
 
+      const controller = new AbortController();
+      if (activeControllers['search']) activeControllers['search'].abort();
+      if (activeControllers['search_count']) activeControllers['search_count'].abort();
+      activeControllers['search'] = controller;
+
       try {
         const params = new URLSearchParams({
           page: String(targetPage),
@@ -2639,13 +2644,14 @@
         if (to) params.set("time_to", to);
         if (currentTotalCount) params.set("total_count", String(currentTotalCount));
 
-        const payload = await fetchJson(`/stats/search/jump?${params.toString()}`);
+        const payload = await fetchJson(`/stats/search/jump?${params.toString()}`, { signal: controller.signal });
         currentSearchPage = targetPage;
         if (payload.total !== undefined && payload.total !== null) {
           currentTotalCount = payload.total;
         }
         renderSearchRows(payload.rows, targetPage, pageSize);
       } catch (error) {
+        if (error.name === 'AbortError') return;
         if (error.message.includes("Cannot jump past")) {
           alert(error.message);
           renderPaginationControls(currentSearchPage, totalPages, currentTotalCount, pageSize);
@@ -2653,6 +2659,10 @@
           jumpToPage(currentSearchPage, pageSize);
         } else {
           renderPanelError("search-results", error.message);
+        }
+      } finally {
+        if (activeControllers['search'] === controller) {
+          delete activeControllers['search'];
         }
       }
     }
@@ -2680,6 +2690,11 @@
       if (from) params.set("time_from", from);
       if (to) params.set("time_to", to);
 
+      const controller = new AbortController();
+      if (activeControllers['search']) activeControllers['search'].abort();
+      if (activeControllers['search_count']) activeControllers['search_count'].abort();
+      activeControllers['search'] = controller;
+
       try {
         const skeletonRow = `
           <tr>
@@ -2692,7 +2707,7 @@
           </tr>
         `;
         document.getElementById("search-results").innerHTML = skeletonRow.repeat(6);
-        const payload = await fetchJson(`/stats/search?${params.toString()}`);
+        const payload = await fetchJson(`/stats/search?${params.toString()}`, { signal: controller.signal });
         const data = payload.rows || [];
         currentSearchPage = page;
 
@@ -2719,25 +2734,38 @@
           if (from) countParams.set("time_from", from);
           if (to) countParams.set("time_to", to);
 
-          fetchJson(`/stats/search/count?${countParams.toString()}`)
+          const countController = new AbortController();
+          activeControllers['search_count'] = countController;
+          fetchJson(`/stats/search/count?${countParams.toString()}`, { signal: countController.signal })
             .then(countPayload => {
               currentTotalCount = countPayload.total || 0;
               // Re-render rows with updated pagination and count text
               renderSearchRows(data, page, pageSize);
             })
             .catch(err => {
+              if (err.name === 'AbortError') return;
               console.error("Failed to fetch search count:", err);
               document.getElementById("search-count").textContent = `Showing ${startIdx.toLocaleString()}–${(startIdx + data.length - 1).toLocaleString()} results (count failed)`;
               document.getElementById("search-pagination").innerHTML = "";
+            })
+            .finally(() => {
+              if (activeControllers['search_count'] === countController) {
+                delete activeControllers['search_count'];
+              }
             });
         } else {
           currentTotalCount = payload.total || 0;
           renderSearchRows(data, page, pageSize);
         }
       } catch (error) {
+        if (error.name === 'AbortError') return;
         renderPanelError("search-results", error.message);
         document.getElementById("search-count").textContent = "";
         document.getElementById("search-pagination").innerHTML = "";
+      } finally {
+        if (activeControllers['search'] === controller) {
+          delete activeControllers['search'];
+        }
       }
     }
 

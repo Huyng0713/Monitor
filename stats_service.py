@@ -667,6 +667,31 @@ class StatsService:
     async def _run_page_query(self, query: str, params: dict) -> list:
         return await self.fetch_rows(query, params)
 
+    @staticmethod
+    def _is_exact_ipv4(value: str) -> bool:
+        parts = value.strip().split(".")
+        if len(parts) != 4:
+            return False
+        for part in parts:
+            if not part.isdigit():
+                return False
+            if str(int(part)) != part:
+                return False
+            if int(part) > 255:
+                return False
+        return True
+
+    def _add_ip_filter(self, where_clauses: list[str], params: dict, ip: str | None) -> None:
+        if not ip:
+            return
+        ip = ip.strip()
+        if self._is_exact_ipv4(ip):
+            where_clauses.append("ip = :ip")
+            params["ip"] = ip
+            return
+        where_clauses.append("ip LIKE :ip")
+        params["ip"] = f"%{ip}%"
+
     async def _search_logs_raw(self, ip, path, status, time_from, time_to, limit, offset=0):
         is_unfiltered = not ip and not path and status is None and not time_from and not time_to
 
@@ -693,10 +718,7 @@ class StatsService:
         else:
             where_clauses = []
 
-            # IP search: dùng trigram index — hỗ trợ LIKE '%x%' trên 7M rows
-            if ip:
-                where_clauses.append("ip LIKE :ip")
-                params["ip"] = f"%{ip}%"
+            self._add_ip_filter(where_clauses, params, ip)
 
             # Path search: dùng trigram index — hỗ trợ LIKE '%x%' trên 7M rows
             if path:
@@ -775,9 +797,7 @@ class StatsService:
         params = {}
         where_clauses = []
 
-        if ip:
-            where_clauses.append("ip LIKE :ip")
-            params["ip"] = f"%{ip}%"
+        self._add_ip_filter(where_clauses, params, ip)
         if path:
             where_clauses.append("path LIKE :path")
             params["path"] = f"%{path}%"
@@ -820,9 +840,7 @@ class StatsService:
         params: dict[str, object] = {"limit": limit}
         where_clauses = []
 
-        if ip:
-            where_clauses.append("ip LIKE :ip")
-            params["ip"] = f"%{ip}%"
+        self._add_ip_filter(where_clauses, params, ip)
 
         if path:
             where_clauses.append("path LIKE :path")
@@ -1052,9 +1070,7 @@ class StatsService:
         # Fallback keyset-offset subquery lookup (if offset < 300 and cache miss)
         params = {}
         where_clauses = []
-        if ip:
-            where_clauses.append("ip LIKE :ip")
-            params["ip"] = f"%{ip}%"
+        self._add_ip_filter(where_clauses, params, ip)
         if path:
             where_clauses.append("path LIKE :path")
             params["path"] = f"%{path}%"
