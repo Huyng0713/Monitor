@@ -2507,15 +2507,11 @@
 
       container.innerHTML = html;
     }
-
-    function renderSearchRows(data, page, pageSize) {
+    function renderSearchRowsOnly(data) {
       if (data.length === 0) {
         document.getElementById("search-results").innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);padding: 20px;">No matching records found</td></tr>`;
-        document.getElementById("search-count").textContent = "No results.";
-        document.getElementById("search-pagination").innerHTML = "";
         return;
       }
-
       const statusColor = s => s >= 500 ? "var(--danger)" : s >= 400 ? "var(--warning)" : "var(--success)";
       document.getElementById("search-results").innerHTML = data.map(r => `
         <tr>
@@ -2527,6 +2523,17 @@
           <td style="color:var(--text-secondary); font-family: 'JetBrains Mono', monospace; font-size:12px;">${r.size !== null ? r.size.toLocaleString() : '-'}</td>
         </tr>
       `).join("");
+    }
+
+    function renderSearchRows(data, page, pageSize) {
+      if (data.length === 0) {
+        document.getElementById("search-results").innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);padding: 20px;">No matching records found</td></tr>`;
+        document.getElementById("search-count").textContent = "No results.";
+        document.getElementById("search-pagination").innerHTML = "";
+        return;
+      }
+
+      renderSearchRowsOnly(data);
 
       const startIdx = (page * pageSize) + 1;
       const endIdx = Math.min((page + 1) * pageSize, currentTotalCount);
@@ -2534,7 +2541,6 @@
       const totalPages = Math.max(Math.ceil(currentTotalCount / pageSize), 1);
       renderPaginationControls(page, totalPages, currentTotalCount, pageSize);
     }
-
     async function jumpToPage(targetPage, pageSize) {
       const totalPages = Math.max(Math.ceil(currentTotalCount / pageSize), 1);
       if (targetPage < 0 || targetPage >= totalPages) return;
@@ -2636,6 +2642,9 @@
         const startIdx = (page * pageSize) + 1;
 
         if (payload.total === null) {
+          // Render search data rows immediately to avoid blocking the user
+          renderSearchRowsOnly(data);
+
           document.getElementById("search-count").textContent = `Showing ${startIdx.toLocaleString()}–${(startIdx + data.length - 1).toLocaleString()} of counting...`;
           document.getElementById("search-pagination").innerHTML = `<span style="color:var(--text-secondary); font-size: 13px; opacity: 0.7;">Loading pages...</span>`;
 
@@ -2649,6 +2658,7 @@
           fetchJson(`/stats/search/count?${countParams.toString()}`)
             .then(countPayload => {
               currentTotalCount = countPayload.total || 0;
+              // Re-render rows with updated pagination and count text
               renderSearchRows(data, page, pageSize);
             })
             .catch(err => {
