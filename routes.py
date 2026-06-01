@@ -171,6 +171,7 @@ async def jump_to_page(
     status: int = None,
     time_from: str = None,
     time_to: str = None,
+    total_count: int = None,
 ):
     """
     Tính target_id cho page bất kỳ mà không cần OFFSET.
@@ -178,7 +179,7 @@ async def jump_to_page(
     """
     try:
         result = await stats_service.jump_to_page(
-            page, page_size, ip, path, status, time_from, time_to
+            page, page_size, ip, path, status, time_from, time_to, total_count
         )
         return result
     except ValueError as exc:

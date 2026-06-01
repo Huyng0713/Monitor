@@ -2574,6 +2574,7 @@
         if (status) params.set("status", status);
         if (from) params.set("time_from", from);
         if (to) params.set("time_to", to);
+        if (currentTotalCount) params.set("total_count", String(currentTotalCount));
 
         const payload = await fetchJson(`/stats/search/jump?${params.toString()}`);
         currentSearchPage = targetPage;

@@ -878,6 +878,7 @@ class StatsService:
         status: int | None = None,
         time_from: str | None = None,
         time_to: str | None = None,
+        total_count: int | None = None,
     ):
         offset = page * page_size
 
@@ -885,13 +886,13 @@ class StatsService:
             async def _fetch_total():
                 return await self.fetch_scalar("SELECT COUNT(*) FROM logs")
 
-            total_count = await self.db_cached("search_count_unfiltered", _fetch_total, ttl=60)
+            unfiltered_total = await self.db_cached("search_count_unfiltered", _fetch_total, ttl=60)
 
-            if offset >= total_count:
+            if offset >= unfiltered_total:
                 return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
 
-            if offset > total_count / 2:
-                reverse_offset = total_count - offset - 1
+            if offset > unfiltered_total / 2:
+                reverse_offset = unfiltered_total - offset - 1
                 if reverse_offset < 0:
                     reverse_offset = 0
                 query = """
@@ -919,15 +920,57 @@ class StatsService:
                 cursor_id=target_id + 1,
             )
 
-        MAX_FILTERED_OFFSET = 10_000
-        if offset > MAX_FILTERED_OFFSET:
-            raise ValueError(
-                f"Cannot jump past page {MAX_FILTERED_OFFSET // page_size} "
-                f"with active filters. Remove filters to jump further."
-            )
+        # Filtered queries: use keyset instead of slow OFFSET
+        params = {}
+        where_clauses = []
+        if ip:
+            where_clauses.append("ip LIKE :ip")
+            params["ip"] = f"%{ip}%"
+        if path:
+            where_clauses.append("path LIKE :path")
+            params["path"] = f"%{path}%"
+        if status is not None:
+            where_clauses.append("status = :status")
+            params["status"] = status
+        if time_from:
+            where_clauses.append("time >= :time_from")
+            params["time_from"] = self._parse_datetime(time_from)
+        if time_to:
+            where_clauses.append("time <= :time_to")
+            params["time_to"] = self._parse_datetime(time_to)
 
-        return await self._search_logs_raw(
-            ip, path, status, time_from, time_to, page_size, offset
+        where_sql = " AND ".join(where_clauses) or "1=1"
+
+        # If total_count is provided and offset is in the second half, use reverse scanning
+        if total_count is not None and offset > total_count / 2:
+            reverse_offset = total_count - offset - 1
+            if reverse_offset < 0:
+                reverse_offset = 0
+            query = f"""
+                SELECT id FROM logs
+                WHERE {where_sql}
+                ORDER BY id ASC
+                LIMIT 1 OFFSET :reverse_offset
+            """
+            params["reverse_offset"] = reverse_offset
+        else:
+            query = f"""
+                SELECT id FROM logs
+                WHERE {where_sql}
+                ORDER BY id DESC
+                LIMIT 1 OFFSET :offset
+            """
+            params["offset"] = offset
+
+        target_id = await self.fetch_val(query, params)
+        if target_id is None:
+            return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
+
+        return await self.search_logs_keyset(
+            ip=ip, path=path, status=status,
+            time_from=time_from, time_to=time_to,
+            limit=page_size,
+            cursor_id=target_id + 1,
         )
 
     def _period_expr(self, granularity: str, table_alias: str | None = None) -> str:
