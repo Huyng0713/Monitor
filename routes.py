@@ -4,7 +4,7 @@ import time
 from collections import deque
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -139,9 +139,8 @@ async def get_anomalies():
 
 
 @app.get("/stats/dashboard")
-async def get_dashboard(background_tasks: BackgroundTasks):
+async def get_dashboard():
     data = await stats_service.get_dashboard_data()
-    background_tasks.add_task(stats_service._precompute_granularities)
     return json_cached(data)
 
 
@@ -234,39 +233,22 @@ async def get_system_logs(
     lines: int = Query(default=50, ge=1, le=500),
     reset: bool = Query(default=False)
 ):
+    log_paths = get_log_paths()
     if reset:
         try:
-            await stats_service.clear_system_logs()
-            # After truncation, immediately return empty — no need for an extra DB read roundtrip
+            with open(log_paths["error"], "w", encoding="utf-8"):
+                pass
             return {"lines": ["System logs cleared."]}
-        except Exception:
-            log_exception("Failed to clear system logs on request")
-    try:
-        db_logs = await stats_service.get_system_logs(lines)
-        if db_logs:
-            formatted_lines = []
-            for log in db_logs:
-                dt_str = log["created_at"]
-                if "T" in dt_str:
-                    dt_part, time_part = dt_str.split("T")
-                    time_clean = time_part.split(".")[0].split("+")[0]
-                    dt_str = f"{dt_part} {time_clean}"
-                
-                tb_suffix = f"\n{log['traceback']}" if log["traceback"] else ""
-                formatted_lines.append(f"{dt_str} [{log['level']}] {log['logger']} {log['message']}{tb_suffix}")
-            formatted_lines.reverse()
-            return {"lines": formatted_lines}
-    except Exception:
-        log_exception("Database system logs fetch failed, falling back to local files")
+        except OSError:
+            log_exception("Failed to clear system log file on request")
+            raise HTTPException(status_code=500, detail="Unable to clear system log file")
 
-    log_paths = get_log_paths()
     try:
         with open(log_paths["error"], "r", encoding="utf-8") as file_obj:
             recent_lines = list(deque(file_obj, maxlen=lines))
-        log_activity("System log tail requested (file fallback): lines=%s returned=%s", lines, len(recent_lines))
+        log_activity("System log tail requested: lines=%s returned=%s", lines, len(recent_lines))
         return {"lines": recent_lines}
     except FileNotFoundError:
-        log_file_issue(logging.ERROR, "System log file missing: path=%s", log_paths["error"])
         return {"lines": ["No log file found yet."]}
     except OSError:
         log_exception("Unable to read system log file: path=%s", log_paths["error"])

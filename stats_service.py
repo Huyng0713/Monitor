@@ -36,21 +36,18 @@ class StatsService:
         self._locks = {}
 
     async def _execute_with_retry(self, operation_fn, is_write=False):
-        import asyncio
         from sqlalchemy.exc import DBAPIError, OperationalError
         from log import log_exception
 
         max_retries = 3
         delay = 0.5
+        operation = "write" if is_write else "read"
         for attempt in range(max_retries):
             try:
                 return await operation_fn()
-            except (DBAPIError, OperationalError, OSError, ConnectionError) as e:
-                log_exception(
-                    f"Database {'write' if is_write else 'read'} transient error "
-                    f"(attempt {attempt + 1}/{max_retries})"
-                )
+            except (DBAPIError, OperationalError, OSError, ConnectionError):
                 if attempt == max_retries - 1:
+                    log_exception(f"Database {operation} failed after {max_retries} attempts")
                     raise
                 await asyncio.sleep(delay * (2 ** attempt))
 
@@ -98,8 +95,7 @@ class StatsService:
                 db_val = row[0]["value"]
                 db_updated_at = row[0]["updated_at"]
         except Exception:
-            from log import log_exception
-            log_exception("Failed to read from cached_stats table")
+            pass
 
         if db_updated_at:
             if db_updated_at.tzinfo is None:
@@ -138,8 +134,7 @@ class StatsService:
                         """), {"key": key, "value": serialized})
                 await self._write_with_retry(_write_op)
             except Exception:
-                from log import log_exception
-                log_exception(f"Failed to write cached_stat {key} to DB")
+                pass
 
             return result
 
@@ -164,8 +159,7 @@ class StatsService:
                         """), {"key": key, "value": serialized})
                 await self._write_with_retry(_write_op)
         except Exception:
-            from log import log_exception
-            log_exception(f"Failed to refresh cached_stat {key} in background")
+            pass
 
     async def _precompute_granularities(self):
         import json
@@ -201,8 +195,7 @@ class StatsService:
                 result = await self._search_logs_raw(None, None, None, None, None, 15, 0)
                 await _store(search_key, result)
         except Exception:
-            from log import log_exception
-            log_exception("Failed to precompute granularity caches")
+            pass
 
     async def clear_system_logs(self):
         from db import write_connection

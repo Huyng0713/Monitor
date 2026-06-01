@@ -167,11 +167,7 @@ WriteSessionLocal = async_sessionmaker(bind=write_engine, autoflush=False, expir
 @asynccontextmanager
 async def read_connection():
     async with ReadSessionLocal() as session:
-        try:
-            yield session
-        except Exception:
-            log_exception("Database read failed")
-            raise
+        yield session
 
 
 @asynccontextmanager
@@ -182,7 +178,6 @@ async def write_connection():
             await session.commit()
         except Exception:
             await session.rollback()
-            log_exception("Database write failed")
             raise
 
 
@@ -258,15 +253,20 @@ async def insert_many(entries):
 
 
 async def insert_system_log(logger: str, level: str, message: str, traceback: str | None = None):
-    async with write_connection() as session:
-        log_record = SystemLogRecord(
-            logger=logger,
-            level=level,
-            message=message,
-            traceback=traceback,
-            created_at=datetime.utcnow()
-        )
-        session.add(log_record)
+    try:
+        async with write_connection() as session:
+            log_record = SystemLogRecord(
+                logger=logger,
+                level=level,
+                message=message,
+                traceback=traceback,
+                created_at=datetime.utcnow()
+            )
+            session.add(log_record)
+        return True
+    except Exception:
+        # Logging must never create another logging failure while the database is down.
+        return False
 
 
 if __name__ == "__main__":

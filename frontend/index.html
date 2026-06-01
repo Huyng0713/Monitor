@@ -3062,6 +3062,70 @@
       }
     }
 
+    function populateDashboard(data) {
+      if (!data) return;
+
+      if (data.summary) {
+        populateSummary(data.summary);
+        saveLocalCache("cache_summary", data.summary);
+      }
+
+      if (data.anomalies) {
+        populateThreatAndAnomalies(data.anomalies);
+        saveLocalCache("cache_anomalies", data.anomalies);
+      }
+
+      if (data.traffic) {
+        populateTrafficData(data.traffic);
+        saveLocalCache("cache_traffic_", data.traffic);
+      }
+
+      if (data.status_over_time) {
+        populateStatusCodesData(data.status_over_time);
+        saveLocalCache("cache_status_codes_hour_48", data.status_over_time);
+      }
+
+      if (data.top_ips) {
+        populateTopIPs(data.top_ips);
+        saveLocalCache("cache_top_ips", data.top_ips);
+      }
+
+      if (data.top_urls || data.status_codes) {
+        const pathsData = data.top_urls || [];
+        const codesData = data.status_codes || [];
+        populateTopUrls(pathsData);
+        populateStatusCodesBreakdown(codesData);
+        saveLocalCache("cache_right_stats", { pathsData, codesData });
+      }
+    }
+
+    async function loadInitialDashboard() {
+      const cached = getLocalCache("cache_dashboard");
+      if (cached) {
+        populateDashboard(cached.data);
+        if (!cached.stale) return;
+      }
+
+      try {
+        const data = await fetchJson("/stats/dashboard");
+        populateDashboard(data);
+        saveLocalCache("cache_dashboard", data);
+      } catch (error) {
+        document.getElementById("total-requests").textContent = "ERR";
+        document.getElementById("unique-ips").textContent = "ERR";
+        document.getElementById("error-rate").textContent = "ERR";
+        document.getElementById("health-score").textContent = "ERR";
+        renderPanelError("anomaly-rate-list", error.message, "loadInitialDashboard()");
+        renderPanelError("anomaly-scanner-list", error.message);
+        renderPanelError("anomaly-error-list", error.message);
+        renderPanelError("traffic-chart-container", error.message, "loadInitialDashboard()");
+        renderPanelError("statusChartWrapper", error.message, "loadInitialDashboard()");
+        renderPanelError("ip-chart-container", error.message, "loadInitialDashboard()");
+        renderPanelError("top-paths-table", error.message, "loadInitialDashboard()");
+        renderPanelError("error-codes-table", error.message);
+      }
+    }
+
     // Hiển thị skeleton trước khi fetch
     function showSkeletons() {
       // Summary cards
@@ -3098,8 +3162,10 @@
         time_24hr: true,
       });
 
-      await Promise.all(Object.keys(PANELS).map(key => loadPanel(key)));
-      await runSearch(0);
+      await Promise.all([
+        loadInitialDashboard(),
+        loadSystemLogs()
+      ]);
     }
 
     window.onload = initDashboard;
