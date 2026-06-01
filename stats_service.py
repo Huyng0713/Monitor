@@ -753,21 +753,32 @@ class StatsService:
             "total": total,
         }
 
-    async def search_logs_count(self, ip, path, status, time_from, time_to):
-        is_unfiltered = not ip and not path and status is None and not time_from and not time_to
-        if is_unfiltered:
-            async def _count_all():
-                return await self.fetch_scalar("SELECT COUNT(*) FROM logs")
-            return await self.db_cached("search_count_unfiltered", _count_all, ttl=60)
+    def _search_ids_cache_key(self, ip, path, status, time_from, time_to) -> str:
+        return f"search_ids:{ip or ''}:{path or ''}:{status or ''}:{time_from or ''}:{time_to or ''}"
 
-        cache_key = f"search_count:{ip or ''}:{path or ''}:{status or ''}:{time_from or ''}:{time_to or ''}"
-        return await self.db_cached(
-            cache_key,
-            lambda: self._fetch_search_count_raw(ip, path, status, time_from, time_to),
-            ttl=120
-        )
+    async def get_search_ids(self, ip, path, status, time_from, time_to) -> list[int]:
+        cache_key = self._search_ids_cache_key(ip, path, status, time_from, time_to)
+        now = time.time()
 
-    async def _fetch_search_count_raw(self, ip, path, status, time_from, time_to):
+        cached = self._cache.get(cache_key)
+        if cached:
+            id_list, ts = cached
+            if now - ts < 120:  # 120s TTL
+                return id_list
+
+        lock = self._locks.setdefault(cache_key, asyncio.Lock())
+        async with lock:
+            cached = self._cache.get(cache_key)
+            if cached:
+                id_list, ts = cached
+                if now - ts < 120:
+                    return id_list
+
+            id_list = await self._fetch_matching_ids(ip, path, status, time_from, time_to)
+            self._cache[cache_key] = (id_list, time.time())
+            return id_list
+
+    async def _fetch_matching_ids(self, ip, path, status, time_from, time_to) -> list[int]:
         params = {}
         where_clauses = []
 
@@ -788,9 +799,19 @@ class StatsService:
             params["time_to"] = self._parse_datetime(time_to)
 
         where_sql = " AND ".join(where_clauses) or "1=1"
-        query = f"SELECT COUNT(*) FROM logs WHERE {where_sql}"
+        query = f"SELECT id FROM logs WHERE {where_sql} ORDER BY id DESC LIMIT 100000"
+        rows = await self.fetch_rows(query, params)
+        return [r["id"] for r in rows]
 
-        return await self.fetch_scalar(query, params)
+    async def search_logs_count(self, ip, path, status, time_from, time_to):
+        is_unfiltered = not ip and not path and status is None and not time_from and not time_to
+        if is_unfiltered:
+            async def _count_all():
+                return await self.fetch_scalar("SELECT COUNT(*) FROM logs")
+            return await self.db_cached("search_count_unfiltered", _count_all, ttl=60)
+
+        ids = await self.get_search_ids(ip, path, status, time_from, time_to)
+        return len(ids)
 
     async def search_logs_keyset(
         self,
@@ -920,7 +941,122 @@ class StatsService:
                 cursor_id=target_id + 1,
             )
 
-        # Filtered queries: use keyset instead of slow OFFSET
+        # Filtered queries: Try to check the ID list cache
+        cache_key = self._search_ids_cache_key(ip, path, status, time_from, time_to)
+        now = time.time()
+        cached = self._cache.get(cache_key)
+
+        id_list = None
+        if cached:
+            cached_ids, ts = cached
+            if now - ts < 120:
+                id_list = cached_ids
+
+        # If not cached, check if currently loading by checking lock status
+        if not id_list:
+            lock = self._locks.get(cache_key)
+            if lock and lock.locked():
+                # Wait for the lock and use the newly cached IDs
+                async with lock:
+                    cached = self._cache.get(cache_key)
+                    if cached:
+                        cached_ids, ts = cached
+                        if now - ts < 120:
+                            id_list = cached_ids
+
+        if id_list:
+            # Cache hit path (instant IN query lookup)
+            if offset >= len(id_list):
+                return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
+            page_ids = id_list[offset : offset + page_size]
+            if not page_ids:
+                return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
+
+            placeholders = ", ".join(f":id_{i}" for i in range(len(page_ids)))
+            ids_params = {f"id_{i}": id_val for i, id_val in enumerate(page_ids)}
+
+            query = f"""
+                SELECT id, ip, time, method, path, status, size
+                FROM logs
+                WHERE id IN ({placeholders})
+                ORDER BY id DESC
+            """
+            rows = await self.fetch_rows(query, ids_params)
+
+            if not rows:
+                return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
+
+            last = rows[-1]
+            next_cursor = last["time"].isoformat() if last["time"] else None
+            next_cursor_id = last["id"]
+
+            return {
+                "rows": [
+                    {
+                        "ip": r["ip"],
+                        "time": r["time"].isoformat() if r["time"] else None,
+                        "method": r["method"],
+                        "path": r["path"],
+                        "status": r["status"],
+                        "size": r["size"],
+                    }
+                    for r in rows
+                ],
+                "next_cursor": next_cursor,
+                "next_cursor_id": next_cursor_id,
+                "has_more": (offset + page_size) < len(id_list),
+            }
+
+        # Cache miss path
+        if offset < 300:
+            # For small offsets, use keyset-offset fallback (instant)
+            # and trigger background caching of IDs for future requests
+            asyncio.create_task(self.get_search_ids(ip, path, status, time_from, time_to))
+        else:
+            # For deep offsets, fetch synchronously to populate the cache and get the IDs
+            id_list = await self.get_search_ids(ip, path, status, time_from, time_to)
+            if offset >= len(id_list):
+                return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
+            page_ids = id_list[offset : offset + page_size]
+            if not page_ids:
+                return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
+
+            placeholders = ", ".join(f":id_{i}" for i in range(len(page_ids)))
+            ids_params = {f"id_{i}": id_val for i, id_val in enumerate(page_ids)}
+
+            query = f"""
+                SELECT id, ip, time, method, path, status, size
+                FROM logs
+                WHERE id IN ({placeholders})
+                ORDER BY id DESC
+            """
+            rows = await self.fetch_rows(query, ids_params)
+
+            if not rows:
+                return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
+
+            last = rows[-1]
+            next_cursor = last["time"].isoformat() if last["time"] else None
+            next_cursor_id = last["id"]
+
+            return {
+                "rows": [
+                    {
+                        "ip": r["ip"],
+                        "time": r["time"].isoformat() if r["time"] else None,
+                        "method": r["method"],
+                        "path": r["path"],
+                        "status": r["status"],
+                        "size": r["size"],
+                    }
+                    for r in rows
+                ],
+                "next_cursor": next_cursor,
+                "next_cursor_id": next_cursor_id,
+                "has_more": (offset + page_size) < len(id_list),
+            }
+
+        # Fallback keyset-offset subquery lookup (if offset < 300 and cache miss)
         params = {}
         where_clauses = []
         if ip:
