@@ -1323,6 +1323,10 @@
         System Logs Console
       </h2>
       <div style="display:flex; gap:8px;">
+        <button onclick="loadSystemLogs(true, true)" class="btn-secondary"
+          style="height:32px; padding:0 12px; font-size:12px; display:inline-flex; align-items:center; border-color: rgba(239, 68, 68, 0.4); color: var(--danger);">
+          Clear Logs
+        </button>
         <button onclick="reloadPanel('system_logs')" class="btn-secondary" id="reload-btn-system_logs"
           style="height:32px; padding:0 12px; font-size:12px; display:inline-flex; align-items:center; gap:6px;">
           <svg class="refresh-icon" style="width: 12px; height: 12px; display: inline-block; vertical-align: middle;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
