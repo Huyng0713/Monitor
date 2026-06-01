@@ -208,7 +208,7 @@ class StatsService:
         from db import write_connection
         async def _write_op():
             async with write_connection() as session:
-                await session.execute(text("TRUNCATE system_logs"))
+                await session.execute(text("DELETE FROM system_logs"))
         await self._write_with_retry(_write_op)
 
     async def fetch_scalar(self, query: str, params: dict | None = None, session=None) -> int:
