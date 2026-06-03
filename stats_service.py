@@ -1,4 +1,5 @@
 import asyncio
+import json
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -34,6 +35,97 @@ class StatsService:
         self._cache = {}
         self._cache_ttl = 300
         self._locks = {}
+        self._semaphore = asyncio.Semaphore(3)
+        self._resolving_ips = set()
+
+    def start_background_tasks(self):
+        self._ensure_worker_running()
+
+    def _ensure_worker_running(self):
+        if not hasattr(self, "_geoip_queue"):
+            self._geoip_queue = asyncio.Queue()
+            self._geoip_worker_task = asyncio.create_task(self._geoip_worker())
+
+    async def _geoip_worker(self):
+        import geoip_resolver
+        from db import write_connection
+        from sqlalchemy import text
+        from log import log_exception, log_activity
+
+        log_activity("GeoIP background worker started")
+        while True:
+            ip = None
+            try:
+                ip = await self._geoip_queue.get()
+                # Check status in db
+                row = await self.fetch_rows(
+                    "SELECT status FROM resolved_ips WHERE ip = :ip",
+                    {"ip": ip}
+                )
+                if row and row[0]["status"] == "resolved":
+                    continue
+
+                res = await geoip_resolver.resolve_ip(ip)
+
+                async def _update_op():
+                    async with write_connection() as session:
+                        await session.execute(text("""
+                            INSERT INTO resolved_ips (ip, country_code, country_name, isp, status, updated_at)
+                            VALUES (:ip, :country_code, :country_name, :isp, 'resolved', NOW())
+                            ON CONFLICT (ip) DO UPDATE
+                            SET country_code = EXCLUDED.country_code,
+                                country_name = EXCLUDED.country_name,
+                                isp = EXCLUDED.isp,
+                                status = 'resolved',
+                                updated_at = NOW()
+                        """), {
+                            "ip": ip,
+                            "country_code": res.get("country_code"),
+                            "country_name": res.get("country_name"),
+                            "isp": res.get("isp")
+                        })
+                await self._write_with_retry(_update_op)
+
+                if res.get("source") == "online":
+                    await asyncio.sleep(1.5)
+
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                log_exception("Error in GeoIP background worker")
+                await asyncio.sleep(2)
+            finally:
+                if ip is not None:
+                    self._resolving_ips.discard(ip)
+                    try:
+                        self._geoip_queue.task_done()
+                    except ValueError:
+                        pass
+
+    async def _queue_ip_resolution(self, ip: str):
+        self._ensure_worker_running()
+        if ip in self._resolving_ips:
+            return
+        self._resolving_ips.add(ip)
+
+        from db import write_connection
+        from sqlalchemy import text
+
+        async def _insert_pending():
+            async with write_connection() as session:
+                await session.execute(text("""
+                    INSERT INTO resolved_ips (ip, country_code, country_name, isp, status, updated_at)
+                    VALUES (:ip, NULL, 'Loading...', 'Loading...', 'pending', NOW())
+                    ON CONFLICT (ip) DO NOTHING
+                """), {"ip": ip})
+        try:
+            await self._write_with_retry(_insert_pending)
+            await self._geoip_queue.put(ip)
+        except Exception:
+            from log import log_exception
+            log_exception("Failed to queue IP resolution")
+            self._resolving_ips.discard(ip)
+
 
     async def _execute_with_retry(self, operation_fn, is_write=False):
         from sqlalchemy.exc import DBAPIError, OperationalError
@@ -44,8 +136,11 @@ class StatsService:
         operation = "write" if is_write else "read"
         for attempt in range(max_retries):
             try:
-                return await operation_fn()
-            except (DBAPIError, OperationalError, OSError, ConnectionError):
+                async with self._semaphore:
+                    return await operation_fn()
+            except asyncio.CancelledError:
+                raise
+            except (DBAPIError, OperationalError, OSError, ConnectionError, TimeoutError, asyncio.TimeoutError):
                 if attempt == max_retries - 1:
                     log_exception(f"Database {operation} failed after {max_retries} attempts")
                     raise
@@ -236,6 +331,33 @@ class StatsService:
                 return result.mappings().all()
         return await self._execute_with_retry(_op)
 
+    def _queue_missing_ip_resolutions(self, rows) -> None:
+        for row in rows:
+            if row.get("ip") and row.get("country_code") is None:
+                asyncio.create_task(self._queue_ip_resolution(row["ip"]))
+
+    def _serialize_log_row(self, row) -> dict:
+        row_time = row.get("time")
+        return {
+            "ip": row.get("ip"),
+            "time": row_time.isoformat() if hasattr(row_time, "isoformat") else row_time,
+            "method": row.get("method"),
+            "path": row.get("path"),
+            "status": row.get("status"),
+            "size": row.get("size"),
+            "country_code": row.get("country_code") or "pending",
+            "country_name": row.get("country_name") or "Loading...",
+            "isp": row.get("isp") or "Loading...",
+        }
+
+    @staticmethod
+    def _json_value(value, fallback):
+        if value is None:
+            return fallback
+        if isinstance(value, str):
+            return json.loads(value)
+        return value
+
     async def get_max_time(self):
         return await self._cached("max_time", self._fetch_max_time)
 
@@ -274,14 +396,37 @@ class StatsService:
         }
 
     async def get_top_ips(self, limit: int):
-        return await self.db_cached(f"top_ips:{limit}", lambda: self._fetch_top_ips(limit))
+        return await self.db_cached(f"top_ips:{limit}", lambda: self._fetch_top_ips(limit), ttl=60)
 
     async def _fetch_top_ips(self, limit: int):
         rows = await self.fetch_rows("""
-            SELECT ip, COUNT(*) as count FROM logs
-            GROUP BY ip ORDER BY count DESC LIMIT :limit
+            WITH ip_counts AS (
+                SELECT ip, COUNT(*) AS count
+                FROM logs
+                GROUP BY ip
+                ORDER BY count DESC
+                LIMIT :limit
+            )
+            SELECT ip_counts.ip,
+                   ip_counts.count,
+                   r.country_code,
+                   r.country_name,
+                   r.isp
+            FROM ip_counts
+            LEFT JOIN resolved_ips r ON ip_counts.ip = r.ip
+            ORDER BY ip_counts.count DESC
         """, {"limit": limit})
-        return [{"ip": row["ip"], "count": row["count"]} for row in rows]
+        self._queue_missing_ip_resolutions(rows)
+        return [
+            {
+                "ip": row["ip"],
+                "count": row["count"],
+                "country_code": row.get("country_code") or "pending",
+                "country_name": row.get("country_name") or "Loading...",
+                "isp": row.get("isp") or "Loading...",
+            }
+            for row in rows
+        ]
 
     async def get_top_urls(self, limit: int):
         return await self.db_cached(f"top_urls:{limit}", lambda: self._fetch_top_urls(limit))
@@ -422,7 +567,28 @@ class StatsService:
         }
 
     async def get_dashboard_data(self):
-        return await self.db_cached("dashboard", self._fetch_dashboard_data)
+        from log import log_exception
+
+        async def _load_panel(name: str, coro):
+            try:
+                return name, await asyncio.wait_for(coro, timeout=20)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log_exception("Dashboard panel failed: name=%s", name)
+                return name, None
+
+        panel_tasks = [
+            _load_panel("summary", self.get_summary()),
+            _load_panel("top_ips", self.get_top_ips(8)),
+            _load_panel("top_urls", self.get_top_urls(8)),
+            _load_panel("status_codes", self.get_status_codes()),
+            _load_panel("traffic", self.get_traffic("hour", None, 48, 0)),
+            _load_panel("status_over_time", self.get_status_codes_over_time("hour", 48, 0)),
+            _load_panel("anomalies", self.get_anomalies()),
+        ]
+        results = await asyncio.gather(*panel_tasks)
+        return {name: value for name, value in results if value is not None}
 
     async def _fetch_dashboard_data(self):
         query = """
@@ -439,11 +605,11 @@ class StatsService:
                     val - interval '24 hours' AS time_threshold
                 FROM max_time_cte
             ),
+            ip_counts_cte AS (
+                SELECT ip, COUNT(*) AS cnt FROM logs GROUP BY ip
+            ),
             summary_cte AS (
-                WITH unique_ips AS (
-                    SELECT ip FROM logs GROUP BY ip
-                ),
-                counts AS (
+                WITH counts AS (
                     SELECT 
                         COUNT(*) AS total_requests,
                         COUNT(*) FILTER (WHERE status >= 400) AS errors
@@ -452,13 +618,19 @@ class StatsService:
                 SELECT 
                     c.total_requests,
                     c.errors,
-                    (SELECT COUNT(*) FROM unique_ips) AS unique_ips
+                    (SELECT COUNT(*) FROM ip_counts_cte) AS unique_ips
                 FROM counts c
             ),
             top_ips_cte AS (
                 SELECT json_agg(h) AS val FROM (
-                    SELECT ip, COUNT(*) as count FROM logs
-                    GROUP BY ip ORDER BY count DESC LIMIT 8
+                    SELECT i.ip,
+                           i.cnt AS count,
+                           r.country_code,
+                           r.country_name,
+                           r.isp
+                    FROM ip_counts_cte i
+                    LEFT JOIN resolved_ips r ON i.ip = r.ip
+                    ORDER BY i.cnt DESC LIMIT 8
                 ) h
             ),
             top_urls_cte AS (
@@ -541,6 +713,7 @@ class StatsService:
             ) AS result;
         """
         raw_result = await self.fetch_val(query)
+        self._queue_missing_ip_resolutions(raw_result.get("top_ips", []) or [])
 
         max_time_str = raw_result.get("max_time")
         if max_time_str:
@@ -586,6 +759,128 @@ class StatsService:
             "status_over_time": {"labels": labels, "datasets": datasets},
             "anomalies": raw_result.get("anomalies"),
         }
+
+    async def get_top_countries(self):
+        return await self.db_cached("top_countries", self._fetch_top_countries, ttl=60)
+
+    async def _fetch_top_countries(self):
+        query = """
+            WITH ip_counts AS (
+                SELECT ip, COUNT(*) AS cnt
+                FROM logs
+                GROUP BY ip
+            ),
+            country_counts AS (
+                SELECT COALESCE(NULLIF(CASE WHEN r.status = 'resolved' THEN r.country_name END, ''), 'Unknown') AS country,
+                       SUM(ip_counts.cnt) AS count
+                FROM ip_counts
+                LEFT JOIN resolved_ips r ON ip_counts.ip = r.ip
+                GROUP BY 1
+            ),
+            unresolved_ips AS (
+                SELECT ip_counts.ip
+                FROM ip_counts
+                LEFT JOIN resolved_ips r ON ip_counts.ip = r.ip
+                WHERE r.ip IS NULL OR r.status <> 'resolved'
+                ORDER BY ip_counts.cnt DESC
+                LIMIT 100
+            )
+            SELECT
+                (SELECT COALESCE(json_agg(c), '[]'::json)
+                 FROM (
+                     SELECT country, count
+                     FROM country_counts
+                     ORDER BY count DESC
+                 ) c) AS items,
+                (SELECT COALESCE(json_agg(u.ip), '[]'::json)
+                 FROM unresolved_ips u) AS unresolved_ips
+        """
+        row = (await self.fetch_rows(query))[0]
+        rows = self._json_value(row["items"], [])
+        unresolved_ips = self._json_value(row["unresolved_ips"], [])
+        self._queue_missing_ip_resolutions({"ip": ip, "country_code": None} for ip in unresolved_ips)
+
+        result = []
+        others_count = 0
+        for i, row in enumerate(rows):
+            name = row["country"]
+            if name == "Loading...":
+                name = "Unknown"
+            if i < 8:
+                result.append({"country": name, "count": int(row["count"])})
+            else:
+                others_count += int(row["count"])
+        if others_count > 0:
+            found = False
+            for item in result:
+                if item["country"] == "Others":
+                    item["count"] += others_count
+                    found = True
+                    break
+            if not found:
+                result.append({"country": "Others", "count": others_count})
+        return result
+
+    async def get_top_isps(self):
+        return await self.db_cached("top_isps", self._fetch_top_isps, ttl=60)
+
+    async def _fetch_top_isps(self):
+        query = """
+            WITH ip_counts AS (
+                SELECT ip, COUNT(*) AS cnt
+                FROM logs
+                GROUP BY ip
+            ),
+            isp_counts AS (
+                SELECT COALESCE(NULLIF(CASE WHEN r.status = 'resolved' THEN r.isp END, ''), 'Unknown') AS isp,
+                       SUM(ip_counts.cnt) AS count
+                FROM ip_counts
+                LEFT JOIN resolved_ips r ON ip_counts.ip = r.ip
+                GROUP BY 1
+            ),
+            unresolved_ips AS (
+                SELECT ip_counts.ip
+                FROM ip_counts
+                LEFT JOIN resolved_ips r ON ip_counts.ip = r.ip
+                WHERE r.ip IS NULL OR r.status <> 'resolved'
+                ORDER BY ip_counts.cnt DESC
+                LIMIT 100
+            )
+            SELECT
+                (SELECT COALESCE(json_agg(i), '[]'::json)
+                 FROM (
+                     SELECT isp, count
+                     FROM isp_counts
+                     ORDER BY count DESC
+                 ) i) AS items,
+                (SELECT COALESCE(json_agg(u.ip), '[]'::json)
+                 FROM unresolved_ips u) AS unresolved_ips
+        """
+        row = (await self.fetch_rows(query))[0]
+        rows = self._json_value(row["items"], [])
+        unresolved_ips = self._json_value(row["unresolved_ips"], [])
+        self._queue_missing_ip_resolutions({"ip": ip, "country_code": None} for ip in unresolved_ips)
+
+        result = []
+        others_count = 0
+        for i, row in enumerate(rows):
+            name = row["isp"]
+            if name == "Loading...":
+                name = "Unknown"
+            if i < 8:
+                result.append({"isp": name, "count": int(row["count"])})
+            else:
+                others_count += int(row["count"])
+        if others_count > 0:
+            found = False
+            for item in result:
+                if item["isp"] == "Others":
+                    item["count"] += others_count
+                    found = True
+                    break
+            if not found:
+                result.append({"isp": "Others", "count": others_count})
+        return result
 
     async def get_status_codes_over_time(self, granularity: str, limit: int, offset: int = 0):
         return await self.db_cached(
@@ -699,8 +994,10 @@ class StatsService:
 
         if is_unfiltered:
             page_query = """
-                SELECT l.id, l.ip, l.time, l.method, l.path, l.status, l.size
+                SELECT l.id, l.ip, l.time, l.method, l.path, l.status, l.size,
+                       r.country_code, r.country_name, r.isp
                 FROM logs l
+                LEFT JOIN resolved_ips r ON l.ip = r.ip
                 JOIN (
                     SELECT id FROM logs ORDER BY id DESC LIMIT :limit OFFSET :offset
                 ) temp ON l.id = temp.id
@@ -739,8 +1036,10 @@ class StatsService:
             where_sql = " AND ".join(where_clauses) or "1=1"
 
             query = f"""
-                SELECT l.id, l.ip, l.time, l.method, l.path, l.status, l.size
+                SELECT l.id, l.ip, l.time, l.method, l.path, l.status, l.size,
+                       r.country_code, r.country_name, r.isp
                 FROM logs l
+                LEFT JOIN resolved_ips r ON l.ip = r.ip
                 JOIN (
                     SELECT id
                     FROM logs
@@ -753,18 +1052,10 @@ class StatsService:
             rows = await self.fetch_rows(query, params)
             total = None
 
+        self._queue_missing_ip_resolutions(rows)
+
         return {
-            "rows": [
-                {
-                    "ip": r.get("ip"),
-                    "time": r.get("time").isoformat() if hasattr(r.get("time"), "isoformat") else r.get("time"),
-                    "method": r.get("method"),
-                    "path": r.get("path"),
-                    "status": r.get("status"),
-                    "size": r.get("size"),
-                }
-                for r in rows
-            ],
+            "rows": [self._serialize_log_row(r) for r in rows],
             "total": total,
         }
 
@@ -863,8 +1154,10 @@ class StatsService:
         where_sql = " AND ".join(where_clauses) or "1=1"
 
         query = f"""
-            SELECT l.id, l.ip, l.time, l.method, l.path, l.status, l.size
+            SELECT l.id, l.ip, l.time, l.method, l.path, l.status, l.size,
+                   r.country_code, r.country_name, r.isp
             FROM logs l
+            LEFT JOIN resolved_ips r ON l.ip = r.ip
             JOIN (
                 SELECT id
                 FROM logs
@@ -884,18 +1177,10 @@ class StatsService:
         next_cursor = last["time"].isoformat() if last["time"] else None
         next_cursor_id = last["id"]
 
+        self._queue_missing_ip_resolutions(rows)
+
         return {
-            "rows": [
-                {
-                    "ip": r["ip"],
-                    "time": r["time"].isoformat() if r["time"] else None,
-                    "method": r["method"],
-                    "path": r["path"],
-                    "status": r["status"],
-                    "size": r["size"],
-                }
-                for r in rows
-            ],
+            "rows": [self._serialize_log_row(r) for r in rows],
             "next_cursor": next_cursor,
             "next_cursor_id": next_cursor_id,
             "has_more": len(rows) == limit,
@@ -987,10 +1272,12 @@ class StatsService:
             ids_params = {f"id_{i}": id_val for i, id_val in enumerate(page_ids)}
 
             query = f"""
-                SELECT id, ip, time, method, path, status, size
-                FROM logs
-                WHERE id IN ({placeholders})
-                ORDER BY id DESC
+                SELECT l.id, l.ip, l.time, l.method, l.path, l.status, l.size,
+                       r.country_code, r.country_name, r.isp
+                FROM logs l
+                LEFT JOIN resolved_ips r ON l.ip = r.ip
+                WHERE l.id IN ({placeholders})
+                ORDER BY l.id DESC
             """
             rows = await self.fetch_rows(query, ids_params)
 
@@ -1001,18 +1288,10 @@ class StatsService:
             next_cursor = last["time"].isoformat() if last["time"] else None
             next_cursor_id = last["id"]
 
+            self._queue_missing_ip_resolutions(rows)
+
             return {
-                "rows": [
-                    {
-                        "ip": r["ip"],
-                        "time": r["time"].isoformat() if r["time"] else None,
-                        "method": r["method"],
-                        "path": r["path"],
-                        "status": r["status"],
-                        "size": r["size"],
-                    }
-                    for r in rows
-                ],
+                "rows": [self._serialize_log_row(r) for r in rows],
                 "next_cursor": next_cursor,
                 "next_cursor_id": next_cursor_id,
                 "has_more": (offset + page_size) < len(id_list),
@@ -1036,10 +1315,12 @@ class StatsService:
             ids_params = {f"id_{i}": id_val for i, id_val in enumerate(page_ids)}
 
             query = f"""
-                SELECT id, ip, time, method, path, status, size
-                FROM logs
-                WHERE id IN ({placeholders})
-                ORDER BY id DESC
+                SELECT l.id, l.ip, l.time, l.method, l.path, l.status, l.size,
+                       r.country_code, r.country_name, r.isp
+                FROM logs l
+                LEFT JOIN resolved_ips r ON l.ip = r.ip
+                WHERE l.id IN ({placeholders})
+                ORDER BY l.id DESC
             """
             rows = await self.fetch_rows(query, ids_params)
 
@@ -1050,18 +1331,10 @@ class StatsService:
             next_cursor = last["time"].isoformat() if last["time"] else None
             next_cursor_id = last["id"]
 
+            self._queue_missing_ip_resolutions(rows)
+
             return {
-                "rows": [
-                    {
-                        "ip": r["ip"],
-                        "time": r["time"].isoformat() if r["time"] else None,
-                        "method": r["method"],
-                        "path": r["path"],
-                        "status": r["status"],
-                        "size": r["size"],
-                    }
-                    for r in rows
-                ],
+                "rows": [self._serialize_log_row(r) for r in rows],
                 "next_cursor": next_cursor,
                 "next_cursor_id": next_cursor_id,
                 "has_more": (offset + page_size) < len(id_list),

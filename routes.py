@@ -26,6 +26,7 @@ CACHE_HEADERS = {"Cache-Control": "public, s-maxage=30, stale-while-revalidate=6
 async def lifespan(_: FastAPI):
     try:
         await init_db()
+        stats_service.start_background_tasks()
         log_activity("API startup completed")
     except Exception:
         log_exception("API lifespan startup failed (database may be offline, server starting anyway)")
@@ -34,8 +35,10 @@ async def lifespan(_: FastAPI):
     
     try:
         await dispose_engine()
+        import geoip_resolver
+        geoip_resolver.close_readers()
     except Exception:
-        log_exception("Failed to dispose database engine")
+        log_exception("Failed to dispose database engine or close geoip readers")
 
 
 app = FastAPI(lifespan=lifespan)
@@ -116,6 +119,17 @@ async def get_top_ips(limit: int = Query(default=10, ge=1, le=100)):
 @app.get("/stats/top-urls")
 async def get_top_urls(limit: int = Query(default=10, ge=1, le=100)):
     return json_cached(await stats_service.get_top_urls(limit))
+
+
+@app.get("/stats/top-countries")
+async def get_top_countries():
+    return json_cached(await stats_service.get_top_countries())
+
+
+@app.get("/stats/top-isps")
+async def get_top_isps():
+    return json_cached(await stats_service.get_top_isps())
+
 
 
 @app.get("/stats/status-codes")

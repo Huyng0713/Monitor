@@ -125,6 +125,18 @@ class CachedStatRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 
 
+class ResolvedIPRecord(Base):
+    __tablename__ = "resolved_ips"
+
+    ip: Mapped[str] = mapped_column(String, primary_key=True)
+    country_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    country_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    isp: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="resolved")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+
+
+
 def _engine_options() -> dict:
     import ssl
     from uuid import uuid4
@@ -147,11 +159,14 @@ def _engine_options() -> dict:
             "statement_cache_size": 0,
             "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4()}__",
             "ssl": ssl_ctx,
+            "server_settings": {
+                "statement_timeout": "25000",
+            },
         },
     }
     if IS_VERCEL:
         options.update({"poolclass": NullPool})
-        options["connect_args"]["command_timeout"] = 120
+        options["connect_args"]["command_timeout"] = 30
     else:
         options.update({"pool_size": 5, "max_overflow": 10, "pool_timeout": 30})
     return options

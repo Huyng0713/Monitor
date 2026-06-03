@@ -5,3 +5,4 @@ sqlalchemy-cockroachdb>=2.0.4
 alembic>=1.16.0
 python-dotenv>=1.0.0
 uvicorn>=0.29.0
+maxminddb>=2.6.0

@@ -777,6 +777,17 @@
       width: 100%;
     }
 
+    @keyframes pulse-opacity {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 1; }
+    }
+    .pulsing-loading {
+      animation: pulse-opacity 1.5s infinite ease-in-out;
+      color: var(--text-secondary);
+      font-style: italic;
+      font-size: 13px;
+    }
+
     .reload-btn {
       background: none;
       border: none;
@@ -1134,7 +1145,7 @@
           <tr>
             <th>IP Address</th>
             <th>Timestamp</th>
-            <th>Method</th>
+            <th>Location & ISP</th>
             <th>Path</th>
             <th>Status</th>
             <th>Bytes</th>
@@ -1269,6 +1280,69 @@
             </div>
             <canvas id="statusChart" style="height: 350px;"></canvas>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Top Countries -->
+    <div class="chart-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+        <h2>
+          <svg style="width:20px;height:20px;color:var(--primary);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 002 2h2a2.5 2.5 0 002.5-2.5V10a2 2 0 00-2-2h-1.5a2 2 0 01-2-2V4.302M12 2a10 10 0 100 20 10 10 0 000-20z"></path>
+          </svg>
+          Top Countries
+          <button class="reload-btn" id="reload-btn-top_countries" onclick="reloadPanel('top_countries')" title="Reload Top Countries">
+            <svg class="refresh-icon" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 10.5A7.5 7.5 0 1112 18h-1.5M4.5 10.5H9m-4.5 0v-4.5" />
+            </svg>
+            <svg class="stop-icon" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </h2>
+      </div>
+      <div id="countries-chart-container" class="chart-wrapper" style="height: 300px; position: relative; width: 100%; display: flex; align-items: center; justify-content: center;">
+        <div class="chart-loader"></div>
+        <div class="skeleton-chart-placeholder" style="position: absolute; inset: 0; display: none; align-items: center; justify-content: center; z-index: 5;">
+          <div style="width: 180px; height: 180px; border-radius: 50%; background: radial-gradient(circle, transparent 40%, rgba(255,255,255,0.05) 41%); border: 8px double rgba(255,255,255,0.05); animation: pulse-opacity 1.5s infinite;"></div>
+        </div>
+        <canvas id="countriesChart" style="max-height: 280px; max-width: 280px;"></canvas>
+      </div>
+    </div>
+
+    <!-- Top Operators & ISPs -->
+    <div class="chart-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+        <h2>
+          <svg style="width:20px;height:20px;color:var(--accent);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 100-6 3 3 0 000 6z"></path>
+          </svg>
+          Top Operators & ISPs
+          <button class="reload-btn" id="reload-btn-top_isps" onclick="reloadPanel('top_isps')" title="Reload Top ISPs">
+            <svg class="refresh-icon" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 10.5A7.5 7.5 0 1112 18h-1.5M4.5 10.5H9m-4.5 0v-4.5" />
+            </svg>
+            <svg class="stop-icon" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </h2>
+      </div>
+      <div id="isps-container" class="chart-wrapper" style="height: 300px; position: relative; width: 100%; overflow-y: auto;">
+        <div class="chart-loader"></div>
+        <div class="skeleton-chart-placeholder horizontal" style="position: absolute; inset: 0; display: none; flex-direction: column; justify-content: space-between; padding: 10px 20px; z-index: 5; height: 100%;">
+          <div style="display: flex; flex-direction: column; height: 100%; gap: 12px; width: 100%; justify-content: center;">
+            <div class="skeleton-line" style="width: 80%; height: 18px; border-radius: 4px;"></div>
+            <div class="skeleton-line" style="width: 60%; height: 18px; border-radius: 4px;"></div>
+            <div class="skeleton-line" style="width: 75%; height: 18px; border-radius: 4px;"></div>
+            <div class="skeleton-line" style="width: 45%; height: 18px; border-radius: 4px;"></div>
+            <div class="skeleton-line" style="width: 90%; height: 18px; border-radius: 4px;"></div>
+            <div class="skeleton-line" style="width: 50%; height: 18px; border-radius: 4px;"></div>
+          </div>
+        </div>
+        <div id="isps-ranking-list" style="display: flex; flex-direction: column; gap: 14px; padding: 4px 0;">
+          <!-- Will be dynamically populated -->
         </div>
       </div>
     </div>
@@ -1437,6 +1511,7 @@
     let trafficChart;
     let statusChart;
     let ipChart;
+    let countriesChart;
     let useTrafficLogScale = false;
     let useStatusLogScale = false;
     let useIpLogScale = false;
@@ -1616,6 +1691,48 @@
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#39;");
+    }
+
+    function getFlagEmoji(countryCode) {
+      if (!countryCode || countryCode.toLowerCase() === 'pending' || countryCode.toLowerCase() === 'unknown' || countryCode.toLowerCase() === 'local') {
+        return '';
+      }
+      const codePoints = countryCode
+        .toUpperCase()
+        .split('')
+        .map(char => 127397 + char.charCodeAt(0));
+      try {
+        return String.fromCodePoint(...codePoints);
+      } catch (e) {
+        return '';
+      }
+    }
+
+    function formatLocationAndIsp(countryCode, countryName, isp) {
+      if (countryCode === 'pending' || countryName === 'Loading...') {
+        return `<span class="pulsing-loading">Loading...</span>`;
+      }
+      const flag = getFlagEmoji(countryCode);
+      const countryStr = countryName && countryName !== 'Unknown' ? countryName : '';
+      const ispStr = isp && isp !== 'Unknown' && isp !== 'Loading...' ? ` (${isp})` : '';
+      
+      if (!countryStr && !ispStr) {
+        return `<span style="color: var(--text-secondary);">Unknown</span>`;
+      }
+      
+      const flagSpace = flag ? flag + ' ' : '';
+      return `<span style="font-size: 13px;">${flagSpace}${escapeHtml(countryStr)}${escapeHtml(ispStr)}</span>`;
+    }
+
+    function formatLocationAndIspText(countryCode, countryName, isp) {
+      if (countryCode === 'pending' || countryName === 'Loading...') return 'Resolving GeoIP...';
+      const flag = getFlagEmoji(countryCode);
+      const countryStr = countryName && countryName !== 'Unknown' ? countryName : '';
+      const ispStr = isp && isp !== 'Unknown' && isp !== 'Loading...' ? isp : '';
+      const parts = [];
+      if (countryStr) parts.push(`${flag ? flag + ' ' : ''}${countryStr}`);
+      if (ispStr) parts.push(ispStr);
+      return parts.length ? parts.join(' / ') : 'Unknown';
     }
 
     function numberInputValue(id, fallback, min, max) {
@@ -2353,10 +2470,231 @@
       }
     }
 
+    async function loadTopCountries(force = false) {
+      const key = "cache_top_countries";
+      if (!force) {
+        const cached = getLocalCache(key);
+        if (cached) {
+          populateTopCountries(cached.data);
+          if (cached.stale) {
+            const controller = new AbortController();
+            if (activeControllers['top_countries']) activeControllers['top_countries'].abort();
+            activeControllers['top_countries'] = controller;
+            fetchJson("/stats/top-countries", { signal: controller.signal })
+              .then(data => {
+                populateTopCountries(data);
+                saveLocalCache(key, data);
+              })
+              .catch(err => {
+                if (err.name !== 'AbortError') console.error("Top countries background refresh failed", err);
+              })
+              .finally(() => {
+                if (activeControllers['top_countries'] === controller) {
+                  delete activeControllers['top_countries'];
+                }
+              });
+          }
+          return;
+        }
+      }
+
+      const controller = new AbortController();
+      if (activeControllers['top_countries']) activeControllers['top_countries'].abort();
+      activeControllers['top_countries'] = controller;
+      setReloadSpinner('top_countries', true);
+
+      const container = document.getElementById("countries-chart-container");
+      if (container) container.classList.add("loading");
+      try {
+        const data = await fetchJson("/stats/top-countries", { signal: controller.signal });
+        populateTopCountries(data);
+        saveLocalCache(key, data);
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          renderPanelError("countries-chart-container", error.message, "loadTopCountries(true)");
+        } else {
+          const cached = getLocalCache(key);
+          if (cached) populateTopCountries(cached.data);
+        }
+      } finally {
+        if (container) container.classList.remove("loading");
+        if (activeControllers['top_countries'] === controller) {
+          delete activeControllers['top_countries'];
+          setReloadSpinner('top_countries', false);
+        }
+      }
+    }
+
+    async function loadTopISPs(force = false) {
+      const key = "cache_top_isps";
+      if (!force) {
+        const cached = getLocalCache(key);
+        if (cached) {
+          populateTopISPs(cached.data);
+          if (cached.stale) {
+            const controller = new AbortController();
+            if (activeControllers['top_isps']) activeControllers['top_isps'].abort();
+            activeControllers['top_isps'] = controller;
+            fetchJson("/stats/top-isps", { signal: controller.signal })
+              .then(data => {
+                populateTopISPs(data);
+                saveLocalCache(key, data);
+              })
+              .catch(err => {
+                if (err.name !== 'AbortError') console.error("Top ISPs background refresh failed", err);
+              })
+              .finally(() => {
+                if (activeControllers['top_isps'] === controller) {
+                  delete activeControllers['top_isps'];
+                }
+              });
+          }
+          return;
+        }
+      }
+
+      const controller = new AbortController();
+      if (activeControllers['top_isps']) activeControllers['top_isps'].abort();
+      activeControllers['top_isps'] = controller;
+      setReloadSpinner('top_isps', true);
+
+      const container = document.getElementById("isps-container");
+      if (container) container.classList.add("loading");
+      try {
+        const data = await fetchJson("/stats/top-isps", { signal: controller.signal });
+        populateTopISPs(data);
+        saveLocalCache(key, data);
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          renderPanelError("isps-container", error.message, "loadTopISPs(true)");
+        } else {
+          const cached = getLocalCache(key);
+          if (cached) populateTopISPs(cached.data);
+        }
+      } finally {
+        if (container) container.classList.remove("loading");
+        if (activeControllers['top_isps'] === controller) {
+          delete activeControllers['top_isps'];
+          setReloadSpinner('top_isps', false);
+        }
+      }
+    }
+
+    function populateTopCountries(data) {
+      const container = document.getElementById("countries-chart-container");
+      if (container) container.classList.remove("loading");
+
+      const labels = data.map(d => d.country);
+      const counts = data.map(d => d.count);
+
+      if (countriesChart) {
+        countriesChart.destroy();
+      }
+
+      const canvas = document.getElementById("countriesChart");
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      countriesChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: labels,
+          datasets: [{
+            data: counts,
+            backgroundColor: [
+              '#38bdf8', // primary
+              '#818cf8', // accent
+              '#34d399', // success
+              '#fbbf24', // warning
+              '#f87171', // danger
+              '#f472b6', // pink
+              '#a78bfa', // purple
+              '#2dd4bf', // teal
+              '#64748b'  // others / unknown
+            ],
+            borderWidth: 1,
+            borderColor: 'rgba(3, 7, 18, 0.6)'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'right',
+              labels: {
+                boxWidth: 12,
+                font: {
+                  family: 'Outfit',
+                  size: 11
+                },
+                color: '#9ca3af'
+              }
+            },
+            tooltip: {
+              backgroundColor: '#0f172a',
+              borderColor: 'rgba(255, 255, 255, 0.1)',
+              borderWidth: 1,
+              titleFont: { family: 'Outfit' },
+              bodyFont: { family: 'Outfit' }
+            }
+          },
+          cutout: '65%'
+        }
+      });
+    }
+
+    function populateTopISPs(data) {
+      const container = document.getElementById("isps-container");
+      if (container) container.classList.remove("loading");
+
+      const listContainer = document.getElementById("isps-ranking-list");
+      if (!listContainer) return;
+
+      if (data.length === 0) {
+        listContainer.innerHTML = `<div style="text-align:center; color:var(--text-secondary); font-size:13px; padding:20px 0;">No ISP data available.</div>`;
+        return;
+      }
+
+      const totalCount = data.reduce((sum, item) => sum + item.count, 0) || 1;
+      
+      listContainer.innerHTML = data.map((item, index) => {
+        const percentage = Math.round((item.count / totalCount) * 100);
+        const gradientColor = index === 0 ? 'linear-gradient(90deg, #38bdf8, #818cf8)' :
+                              index === 1 ? 'linear-gradient(90deg, #818cf8, #a78bfa)' :
+                              index === 2 ? 'linear-gradient(90deg, #34d399, #2dd4bf)' :
+                              'linear-gradient(90deg, rgba(255,255,255,0.1), rgba(255,255,255,0.25))';
+        const rankBadgeColor = index === 0 ? 'color: #38bdf8; font-weight: 700;' :
+                               index === 1 ? 'color: #818cf8; font-weight: 700;' :
+                               index === 2 ? 'color: #34d399; font-weight: 700;' :
+                               'color: var(--text-secondary);';
+        
+        const rankNum = index + 1;
+        const ispName = item.isp || "Unknown";
+
+        return `
+          <div class="isp-row" style="display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between; font-size: 13px; align-items: center;">
+              <div style="display: flex; align-items: center; gap: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 75%;">
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; ${rankBadgeColor}">#${rankNum}</span>
+                <span style="font-weight: 500; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden;" title="${escapeHtml(ispName)}">${escapeHtml(ispName)}</span>
+              </div>
+              <span style="color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; font-size: 12px;">${item.count.toLocaleString()} (${percentage}%)</span>
+            </div>
+            <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.03); border-radius: 3px; overflow: hidden;">
+              <div style="width: ${percentage}%; height: 100%; background: ${gradientColor}; border-radius: 3px; transition: width 0.6s ease-out;"></div>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
     function populateTopIPs(data) {
       cachedTopIpsData = data;
       const counts = data.map(d => d.count);
-      const labels = data.map(d => d.ip);
+      const labels = data.map(d => {
+        const flag = getFlagEmoji(d.country_code);
+        return flag ? `${flag} ${d.ip}` : d.ip;
+      });
 
       const compressedTicks = buildCompressedTicks(Math.max(...counts, 1));
       const chartData = useIpLogScale ? compressedData(counts, compressedTicks) : counts;
@@ -2394,7 +2732,15 @@
               borderColor: 'rgba(255, 255, 255, 0.1)',
               borderWidth: 1,
               callbacks: {
-                label: ctx => ` Requests: ${ctx.dataset.originalData?.[ctx.dataIndex] ?? ctx.parsed.x}`
+                title: items => {
+                  const item = data[items[0]?.dataIndex] || {};
+                  return item.ip || '';
+                },
+                label: ctx => ` Requests: ${ctx.dataset.originalData?.[ctx.dataIndex] ?? ctx.parsed.x}`,
+                afterLabel: ctx => {
+                  const item = data[ctx.dataIndex] || {};
+                  return ` ${formatLocationAndIspText(item.country_code, item.country_name, item.isp)}`;
+                }
               }
             }
           },
@@ -2580,7 +2926,7 @@
         <tr>
           <td style="color:var(--primary); font-weight: 500;">${escapeHtml(r.ip)}</td>
           <td style="color:var(--text-secondary); font-family: 'JetBrains Mono', monospace; font-size:12px;">${formatDateTime(r.time)}</td>
-          <td style="font-weight: 600; font-size: 13px;">${escapeHtml(r.method)}</td>
+          <td>${formatLocationAndIsp(r.country_code, r.country_name, r.isp)}</td>
           <td style="font-family: 'JetBrains Mono', monospace; font-size:13px; max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(r.path)}">${escapeHtml(r.path)}</td>
           <td><span style="color:${statusColor(r.status)}; font-weight: 700;">${escapeHtml(r.status)}</span></td>
           <td style="color:var(--text-secondary); font-family: 'JetBrains Mono', monospace; font-size:12px;">${r.size !== null ? r.size.toLocaleString() : '-'}</td>
@@ -2619,7 +2965,7 @@
         <tr>
           <td><div class="skeleton-line" style="width: 100px;"></div></td>
           <td><div class="skeleton-line" style="width: 140px;"></div></td>
-          <td><div class="skeleton-line" style="width: 50px;"></div></td>
+          <td><div class="skeleton-line" style="width: 180px;"></div></td>
           <td><div class="skeleton-line" style="width: 260px;"></div></td>
           <td><div class="skeleton-line" style="width: 40px;"></div></td>
           <td><div class="skeleton-line" style="width: 60px;"></div></td>
@@ -2700,7 +3046,7 @@
           <tr>
             <td><div class="skeleton-line" style="width: 100px;"></div></td>
             <td><div class="skeleton-line" style="width: 140px;"></div></td>
-            <td><div class="skeleton-line" style="width: 50px;"></div></td>
+            <td><div class="skeleton-line" style="width: 180px;"></div></td>
             <td><div class="skeleton-line" style="width: 260px;"></div></td>
             <td><div class="skeleton-line" style="width: 40px;"></div></td>
             <td><div class="skeleton-line" style="width: 60px;"></div></td>
@@ -3036,6 +3382,10 @@
           localStorage.removeItem(`cache_status_codes_${range}_${limit}`);
         } else if (panelName === 'top_ips') {
           localStorage.removeItem("cache_top_ips");
+        } else if (panelName === 'top_countries') {
+          localStorage.removeItem("cache_top_countries");
+        } else if (panelName === 'top_isps') {
+          localStorage.removeItem("cache_top_isps");
         } else if (panelName === 'right_stats') {
           localStorage.removeItem("cache_right_stats");
         } else if (panelName === 'system_logs') {
@@ -3080,6 +3430,8 @@
       status_codes: (force) => loadStatusCodes(document.querySelector(".range-btn.active")?.dataset?.range || "hour", force),
       anomalies: (force) => loadThreatAndAnomalies(force),
       top_ips: (force) => loadTopIPs(force),
+      top_countries: (force) => loadTopCountries(force),
+      top_isps: (force) => loadTopISPs(force),
       right_stats: (force) => loadRightStats(force),
       system_logs: (force) => loadSystemLogs(force)
     };
@@ -3118,6 +3470,16 @@
         saveLocalCache("cache_top_ips", data.top_ips);
       }
 
+      if (data.top_countries) {
+        populateTopCountries(data.top_countries);
+        saveLocalCache("cache_top_countries", data.top_countries);
+      }
+
+      if (data.top_isps) {
+        populateTopISPs(data.top_isps);
+        saveLocalCache("cache_top_isps", data.top_isps);
+      }
+
       if (data.top_urls || data.status_codes) {
         const pathsData = data.top_urls || [];
         const codesData = data.status_codes || [];
@@ -3138,19 +3500,24 @@
         const data = await fetchJson("/stats/dashboard");
         populateDashboard(data);
         saveLocalCache("cache_dashboard", data);
+        const missingLoads = [];
+        if (!data.summary) missingLoads.push(loadSummary(true));
+        if (!data.anomalies) missingLoads.push(loadThreatAndAnomalies(true));
+        if (!data.traffic) missingLoads.push(loadTraffic(document.getElementById("traffic-ip-search").value.trim(), true));
+        if (!data.status_over_time) missingLoads.push(loadStatusCodes(document.querySelector(".range-btn.active")?.dataset?.range || "hour", true));
+        if (!data.top_ips) missingLoads.push(loadTopIPs(true));
+        if (!data.top_urls || !data.status_codes) missingLoads.push(loadRightStats(true));
+        if (missingLoads.length) await Promise.allSettled(missingLoads);
       } catch (error) {
-        document.getElementById("total-requests").textContent = "ERR";
-        document.getElementById("unique-ips").textContent = "ERR";
-        document.getElementById("error-rate").textContent = "ERR";
-        document.getElementById("health-score").textContent = "ERR";
-        renderPanelError("anomaly-rate-list", error.message, "loadInitialDashboard()");
-        renderPanelError("anomaly-scanner-list", error.message);
-        renderPanelError("anomaly-error-list", error.message);
-        renderPanelError("traffic-chart-container", error.message, "loadInitialDashboard()");
-        renderPanelError("statusChartWrapper", error.message, "loadInitialDashboard()");
-        renderPanelError("ip-chart-container", error.message, "loadInitialDashboard()");
-        renderPanelError("top-paths-table", error.message, "loadInitialDashboard()");
-        renderPanelError("error-codes-table", error.message);
+        console.error("Dashboard bundle failed; loading panels individually.", error);
+        await Promise.allSettled([
+          loadSummary(true),
+          loadThreatAndAnomalies(true),
+          loadTraffic(document.getElementById("traffic-ip-search").value.trim(), true),
+          loadStatusCodes(document.querySelector(".range-btn.active")?.dataset?.range || "hour", true),
+          loadTopIPs(true),
+          loadRightStats(true)
+        ]);
       }
     }
 
@@ -3170,6 +3537,11 @@
                     <td><div class="skeleton-line" style="width:80px;"></div></td>
                 </tr>
             `).join("");
+      });
+
+      ["countries-chart-container", "isps-container"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add("loading");
       });
     }
 
@@ -3192,6 +3564,8 @@
 
       await Promise.all([
         loadInitialDashboard(),
+        loadTopCountries(),
+        loadTopISPs(),
         loadSystemLogs()
       ]);
     }
