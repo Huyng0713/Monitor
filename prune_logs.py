@@ -19,7 +19,7 @@ async def main():
         print(f"Current count {total_count:,} is within target limit {target_limit:,}. No pruning needed.")
         return
 
-    # 2. Find the timestamp of the 300,000th newest log
+    # 2. Find the timestamp of the 5,000,000th newest log
     cutoff_time = await service.fetch_val(
         "SELECT time FROM logs ORDER BY time DESC LIMIT 1 OFFSET :offset", 
         {"offset": target_limit}

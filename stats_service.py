@@ -1,21 +1,17 @@
 import asyncio
 import json
 import time
+import weakref
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import text
 
-from db import read_connection
+from db import read_connection, write_connection
 
 DATE_TRUNC_UNITS = {
     "minute": "minute",
     "hour": "hour",
     "day": "day",
-}
-INTERVAL_UNITS = {
-    "minute": "1 minute",
-    "hour": "1 hour",
-    "day": "1 day",
 }
 TO_CHAR_FORMATS = {
     "minute": "YYYY-MM-DD\"T\"HH24:MI",
@@ -27,6 +23,11 @@ TIMEDELTA_UNITS = {
     "hour": timedelta(hours=1),
     "day": timedelta(days=1),
 }
+PYTHON_DATE_FORMATS = {
+    "minute": "%Y-%m-%dT%H:%M",
+    "hour": "%Y-%m-%dT%H",
+    "day": "%Y-%m-%d",
+}
 
 
 class StatsService:
@@ -34,8 +35,9 @@ class StatsService:
         self.connection_factory = connection_factory
         self._cache = {}
         self._cache_ttl = 300
-        self._locks = {}
-        self._semaphore = asyncio.Semaphore(3)
+        self._locks = weakref.WeakValueDictionary()
+        self._read_semaphore = asyncio.Semaphore(10)
+        self._write_semaphore = asyncio.Semaphore(2)
         self._resolving_ips = set()
 
     def start_background_tasks(self):
@@ -67,7 +69,7 @@ class StatsService:
 
                 res = await geoip_resolver.resolve_ip(ip)
 
-                async def _update_op():
+                async def _update_op(target_ip=ip, resolved_res=res):
                     async with write_connection() as session:
                         await session.execute(text("""
                             INSERT INTO resolved_ips (ip, country_code, country_name, isp, status, updated_at)
@@ -79,10 +81,10 @@ class StatsService:
                                 status = 'resolved',
                                 updated_at = NOW()
                         """), {
-                            "ip": ip,
-                            "country_code": res.get("country_code"),
-                            "country_name": res.get("country_name"),
-                            "isp": res.get("isp")
+                            "ip": target_ip,
+                            "country_code": resolved_res.get("country_code"),
+                            "country_name": resolved_res.get("country_name"),
+                            "isp": resolved_res.get("isp")
                         })
                 await self._write_with_retry(_update_op)
 
@@ -111,13 +113,13 @@ class StatsService:
         from db import write_connection
         from sqlalchemy import text
 
-        async def _insert_pending():
+        async def _insert_pending(target_ip=ip):
             async with write_connection() as session:
                 await session.execute(text("""
                     INSERT INTO resolved_ips (ip, country_code, country_name, isp, status, updated_at)
                     VALUES (:ip, NULL, 'Loading...', 'Loading...', 'pending', NOW())
                     ON CONFLICT (ip) DO NOTHING
-                """), {"ip": ip})
+                """), {"ip": target_ip})
         try:
             await self._write_with_retry(_insert_pending)
             await self._geoip_queue.put(ip)
@@ -134,9 +136,10 @@ class StatsService:
         max_retries = 3
         delay = 0.5
         operation = "write" if is_write else "read"
+        sem = self._write_semaphore if is_write else self._read_semaphore
         for attempt in range(max_retries):
             try:
-                async with self._semaphore:
+                async with sem:
                     return await operation_fn()
             except asyncio.CancelledError:
                 raise
@@ -157,7 +160,10 @@ class StatsService:
             if now - ts < self._cache_ttl:
                 return value
 
-        lock = self._locks.setdefault(key, asyncio.Lock())
+        lock = self._locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._locks[key] = lock
         async with lock:
             now = time.time()
             cached = self._cache.get(key)
@@ -176,10 +182,6 @@ class StatsService:
             value, ts = cached_in_mem
             if now - ts < ttl:
                 return value
-
-        import json
-        from datetime import datetime, timezone
-        from db import write_connection
 
         db_val = None
         db_updated_at = None
@@ -206,7 +208,10 @@ class StatsService:
                 asyncio.create_task(self._refresh_stat_in_db(key, fetch_fn))
             return parsed_val
 
-        lock = self._locks.setdefault(key, asyncio.Lock())
+        lock = self._locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._locks[key] = lock
         async with lock:
             cached_in_mem = self._cache.get(key)
             if cached_in_mem and not force_refresh:
@@ -219,14 +224,14 @@ class StatsService:
 
             try:
                 serialized = json.dumps(result)
-                async def _write_op():
+                async def _write_op(target_key=key, target_serialized=serialized):
                     async with write_connection() as session:
                         await session.execute(text("""
                             INSERT INTO cached_stats (key, value, updated_at)
                             VALUES (:key, :value, NOW())
                             ON CONFLICT (key) DO UPDATE 
                             SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at
-                        """), {"key": key, "value": serialized})
+                        """), {"key": target_key, "value": target_serialized})
                 await self._write_with_retry(_write_op)
             except Exception:
                 pass
@@ -234,24 +239,25 @@ class StatsService:
             return result
 
     async def _refresh_stat_in_db(self, key, fetch_fn):
-        import json
-        from db import write_connection
         try:
-            lock = self._locks.setdefault(key, asyncio.Lock())
+            lock = self._locks.get(key)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._locks[key] = lock
             if lock.locked():
                 return
             async with lock:
                 result = await fetch_fn()
                 self._cache[key] = (result, time.time())
                 serialized = json.dumps(result)
-                async def _write_op():
+                async def _write_op(target_key=key, target_serialized=serialized):
                     async with write_connection() as session:
                         await session.execute(text("""
                             INSERT INTO cached_stats (key, value, updated_at)
                             VALUES (:key, :value, NOW())
-                            ON CONFLICT (key) DO UPDATE 
+                            ON CONFLICT (key) DO UPDATE
                             SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at
-                        """), {"key": key, "value": serialized})
+                        """), {"key": target_key, "value": target_serialized})
                 await self._write_with_retry(_write_op)
         except Exception:
             pass
@@ -287,7 +293,7 @@ class StatsService:
 
             search_key = "search:default:15"
             if search_key not in self._cache:
-                result = await self._search_logs_raw(None, None, None, None, None, 15, 0)
+                result = await self._search_logs_raw(None, None, None, None, None, None, 15, 0)
                 await _store(search_key, result)
         except Exception:
             pass
@@ -590,175 +596,7 @@ class StatsService:
         results = await asyncio.gather(*panel_tasks)
         return {name: value for name, value in results if value is not None}
 
-    async def _fetch_dashboard_data(self):
-        query = """
-            WITH 
-            max_time_cte AS (
-                SELECT COALESCE(MAX(time), NOW()) AS val FROM logs
-            ),
-            params AS (
-                SELECT 
-                    val AS max_time,
-                    val - interval '47 hours' AS start_time,
-                    val AS end_time,
-                    val + interval '1 hour' AS end_time_exclusive,
-                    val - interval '24 hours' AS time_threshold
-                FROM max_time_cte
-            ),
-            ip_counts_cte AS (
-                SELECT ip, COUNT(*) AS cnt FROM logs GROUP BY ip
-            ),
-            summary_cte AS (
-                WITH counts AS (
-                    SELECT 
-                        COUNT(*) AS total_requests,
-                        COUNT(*) FILTER (WHERE status >= 400) AS errors
-                    FROM logs
-                )
-                SELECT 
-                    c.total_requests,
-                    c.errors,
-                    (SELECT COUNT(*) FROM ip_counts_cte) AS unique_ips
-                FROM counts c
-            ),
-            top_ips_cte AS (
-                SELECT json_agg(h) AS val FROM (
-                    SELECT i.ip,
-                           i.cnt AS count,
-                           r.country_code,
-                           r.country_name,
-                           r.isp
-                    FROM ip_counts_cte i
-                    LEFT JOIN resolved_ips r ON i.ip = r.ip
-                    ORDER BY i.cnt DESC LIMIT 8
-                ) h
-            ),
-            top_urls_cte AS (
-                SELECT json_agg(h) AS val FROM (
-                    SELECT path, COUNT(*) as count FROM logs
-                    GROUP BY path ORDER BY count DESC LIMIT 8
-                ) h
-            ),
-            status_codes_cte AS (
-                SELECT json_agg(h) AS val FROM (
-                    SELECT status, COUNT(*) as count FROM logs
-                    GROUP BY status ORDER BY count DESC
-                ) h
-            ),
-            traffic_cte AS (
-                SELECT json_agg(h) AS val FROM (
-                    SELECT
-                        to_char(date_trunc('hour', l.time), 'YYYY-MM-DD"T"HH24') AS period,
-                        COUNT(*) AS count
-                    FROM logs l, params p
-                    WHERE l.time >= p.start_time
-                      AND l.time <= p.end_time
-                    GROUP BY date_trunc('hour', l.time)
-                    ORDER BY date_trunc('hour', l.time)
-                ) h
-            ),
-            status_over_time_cte AS (
-                SELECT json_agg(h) AS val FROM (
-                    SELECT
-                        date_trunc('hour', l.time) AS period_raw,
-                        l.status,
-                        COUNT(*) AS count
-                    FROM logs l, params p
-                    WHERE l.time >= p.start_time
-                      AND l.time < p.end_time_exclusive
-                    GROUP BY 1, 2
-                    ORDER BY 1, 2
-                ) h
-            ),
-            anomalies_cte AS (
-                WITH base_data AS (
-                    SELECT ip, status, date_trunc('minute', time) as minute
-                    FROM logs, params p
-                    WHERE time >= p.time_threshold
-                ),
-                high_freq AS (
-                    SELECT ip, minute, COUNT(*) as count
-                    FROM base_data
-                    GROUP BY ip, minute
-                    HAVING COUNT(*) > 100
-                ),
-                many_404 AS (
-                    SELECT ip, COUNT(*) as count
-                    FROM base_data
-                    WHERE status = 404
-                    GROUP BY ip
-                    HAVING COUNT(*) > 20
-                ),
-                many_500 AS (
-                    SELECT ip, COUNT(*) as count
-                    FROM base_data
-                    WHERE status = 500
-                    GROUP BY ip
-                    HAVING COUNT(*) > 10
-                )
-                SELECT 
-                    (SELECT coalesce(json_agg(h), '[]'::json) FROM (SELECT ip, to_char(minute, 'YYYY-MM-DD"T"HH24:MI') as minute, count FROM high_freq ORDER BY count DESC) h) AS high_frequency,
-                    (SELECT coalesce(json_agg(c4), '[]'::json) FROM (SELECT ip, count FROM many_404 ORDER BY count DESC) c4) AS many_404s,
-                    (SELECT coalesce(json_agg(c5), '[]'::json) FROM (SELECT ip, count FROM many_500 ORDER BY count DESC) c5) AS many_500s
-            )
-            SELECT json_build_object(
-                'max_time', (SELECT val FROM max_time_cte),
-                'summary', (SELECT row_to_json(s) FROM summary_cte s),
-                'top_ips', (SELECT coalesce(val, '[]'::json) FROM top_ips_cte),
-                'top_urls', (SELECT coalesce(val, '[]'::json) FROM top_urls_cte),
-                'status_codes', (SELECT coalesce(val, '[]'::json) FROM status_codes_cte),
-                'traffic', (SELECT coalesce(val, '[]'::json) FROM traffic_cte),
-                'status_over_time', (SELECT coalesce(val, '[]'::json) FROM status_over_time_cte),
-                'anomalies', (SELECT row_to_json(a) FROM anomalies_cte a)
-            ) AS result;
-        """
-        raw_result = await self.fetch_val(query)
-        self._queue_missing_ip_resolutions(raw_result.get("top_ips", []) or [])
 
-        max_time_str = raw_result.get("max_time")
-        if max_time_str:
-            max_time = datetime.fromisoformat(max_time_str)
-        else:
-            max_time = datetime.now(timezone.utc)
-
-        end_period = max_time.replace(minute=0, second=0, microsecond=0)
-        start_time = end_period - 47 * timedelta(hours=1)
-
-        labels = []
-        for i in range(48):
-            p = start_time + i * timedelta(hours=1)
-            labels.append(p.strftime("%Y-%m-%dT%H"))
-
-        db_data = {}
-        all_statuses = set()
-        for row in raw_result.get("status_over_time", []) or []:
-            p_raw_str = row.get("period_raw")
-            if p_raw_str:
-                p_dt = datetime.fromisoformat(p_raw_str)
-                p_str = p_dt.strftime("%Y-%m-%dT%H")
-                status = str(row.get("status")) if row.get("status") is not None else "Unknown"
-                all_statuses.add(status)
-                db_data.setdefault(p_str, {})[status] = row.get("count", 0)
-
-        datasets = []
-        for status in sorted(all_statuses):
-            status_data = []
-            for label in labels:
-                status_data.append(db_data.get(label, {}).get(status, 0))
-            datasets.append({
-                "label": status,
-                "data": status_data
-            })
-
-        return {
-            "summary": raw_result.get("summary"),
-            "top_ips": raw_result.get("top_ips"),
-            "top_urls": raw_result.get("top_urls"),
-            "status_codes": raw_result.get("status_codes"),
-            "traffic": raw_result.get("traffic"),
-            "status_over_time": {"labels": labels, "datasets": datasets},
-            "anomalies": raw_result.get("anomalies"),
-        }
 
     async def get_top_countries(self):
         return await self.db_cached("top_countries", self._fetch_top_countries, ttl=60)
@@ -801,24 +639,11 @@ class StatsService:
         self._queue_missing_ip_resolutions({"ip": ip, "country_code": None} for ip in unresolved_ips)
 
         result = []
-        others_count = 0
-        for i, row in enumerate(rows):
+        for row in rows:
             name = row["country"]
             if name == "Loading...":
                 name = "Unknown"
-            if i < 8:
-                result.append({"country": name, "count": int(row["count"])})
-            else:
-                others_count += int(row["count"])
-        if others_count > 0:
-            found = False
-            for item in result:
-                if item["country"] == "Others":
-                    item["count"] += others_count
-                    found = True
-                    break
-            if not found:
-                result.append({"country": "Others", "count": others_count})
+            result.append({"country": name, "count": int(row["count"])})
         return result
 
     async def get_top_isps(self):
@@ -872,13 +697,10 @@ class StatsService:
             else:
                 others_count += int(row["count"])
         if others_count > 0:
-            found = False
-            for item in result:
-                if item["isp"] == "Others":
-                    item["count"] += others_count
-                    found = True
-                    break
-            if not found:
+            others_item = next((item for item in result if item["isp"] == "Others"), None)
+            if others_item:
+                others_item["count"] += others_count
+            else:
                 result.append({"isp": "Others", "count": others_count})
         return result
 
@@ -923,10 +745,11 @@ class StatsService:
 
         db_data = {}
         all_statuses = set()
+        fmt = PYTHON_DATE_FORMATS.get(granularity, "%Y-%m-%dT%H")
         for row in rows:
             p_raw = row["period_raw"]
             if p_raw:
-                p_str = p_raw.strftime("%Y-%m-%dT%H")
+                p_str = p_raw.strftime(fmt)
                 status = str(row["status"]) if row["status"] is not None else "Unknown"
                 all_statuses.add(status)
                 db_data.setdefault(p_str, {})[status] = row["count"]
@@ -934,7 +757,7 @@ class StatsService:
         labels = []
         for i in range(limit):
             p = start_time + i * unit_delta
-            p_str = p.strftime("%Y-%m-%dT%H")
+            p_str = p.strftime(fmt)
             labels.append(p_str)
 
         datasets = []
@@ -949,46 +772,60 @@ class StatsService:
 
         return {"labels": labels, "datasets": datasets}
 
-    async def search_logs(self, ip, path, status, time_from, time_to, limit, offset=0):
-        is_unfiltered = not ip and not path and status is None and not time_from and not time_to
+    async def search_logs(self, ip, country, path, status, time_from, time_to, limit, offset=0):
+        is_unfiltered = not ip and not country and not path and status is None and not time_from and not time_to
 
         if is_unfiltered and offset == 0:
             return await self.db_cached(
                 f"search:default:{limit}",
-                lambda: self._search_logs_raw(ip, path, status, time_from, time_to, limit, offset),
+                lambda: self._search_logs_raw(ip, country, path, status, time_from, time_to, limit, offset),
             )
-        return await self._search_logs_raw(ip, path, status, time_from, time_to, limit, offset)
+        return await self._search_logs_raw(ip, country, path, status, time_from, time_to, limit, offset)
 
     async def _run_page_query(self, query: str, params: dict) -> list:
         return await self.fetch_rows(query, params)
-
-    @staticmethod
-    def _is_exact_ipv4(value: str) -> bool:
-        parts = value.strip().split(".")
-        if len(parts) != 4:
-            return False
-        for part in parts:
-            if not part.isdigit():
-                return False
-            if str(int(part)) != part:
-                return False
-            if int(part) > 255:
-                return False
-        return True
 
     def _add_ip_filter(self, where_clauses: list[str], params: dict, ip: str | None) -> None:
         if not ip:
             return
         ip = ip.strip()
-        if self._is_exact_ipv4(ip):
-            where_clauses.append("ip = :ip")
-            params["ip"] = ip
+        if not ip:
             return
-        where_clauses.append("ip LIKE :ip")
-        params["ip"] = f"%{ip}%"
+        where_clauses.append("ip = :ip")
+        params["ip"] = ip
 
-    async def _search_logs_raw(self, ip, path, status, time_from, time_to, limit, offset=0):
-        is_unfiltered = not ip and not path and status is None and not time_from and not time_to
+    async def _add_country_filter(self, where_clauses: list[str], params: dict, country: str | None) -> None:
+        if not country:
+            return
+        country = country.strip()
+        if not country:
+            return
+
+        query = """
+            SELECT ip FROM resolved_ips
+            WHERE status = 'resolved'
+              AND (
+                  LOWER(COALESCE(country_code, '')) = :country_exact
+                  OR LOWER(COALESCE(country_name, '')) LIKE :country_like
+              )
+        """
+        exact_val = country.lower()
+        like_val = f"%{country.lower()}%"
+        
+        rows = await self.fetch_rows(query, {
+            "country_exact": exact_val,
+            "country_like": like_val
+        })
+        matching_ips = [r["ip"] for r in rows]
+        
+        if not matching_ips:
+            where_clauses.append("1=0")
+        else:
+            where_clauses.append("ip = ANY(:country_ips)")
+            params["country_ips"] = matching_ips
+
+    async def _search_logs_raw(self, ip, country, path, status, time_from, time_to, limit, offset=0):
+        is_unfiltered = not ip and not country and not path and status is None and not time_from and not time_to
 
         params: dict[str, object] = {"limit": limit, "offset": offset}
 
@@ -1016,6 +853,7 @@ class StatsService:
             where_clauses = []
 
             self._add_ip_filter(where_clauses, params, ip)
+            await self._add_country_filter(where_clauses, params, country)
 
             # Path search: dùng trigram index — hỗ trợ LIKE '%x%' trên 7M rows
             if path:
@@ -1059,11 +897,11 @@ class StatsService:
             "total": total,
         }
 
-    def _search_ids_cache_key(self, ip, path, status, time_from, time_to) -> str:
-        return f"search_ids:{ip or ''}:{path or ''}:{status or ''}:{time_from or ''}:{time_to or ''}"
+    def _search_ids_cache_key(self, ip, country, path, status, time_from, time_to) -> str:
+        return f"search_ids:{ip or ''}:{country or ''}:{path or ''}:{status or ''}:{time_from or ''}:{time_to or ''}"
 
-    async def get_search_ids(self, ip, path, status, time_from, time_to) -> list[int]:
-        cache_key = self._search_ids_cache_key(ip, path, status, time_from, time_to)
+    async def get_search_ids(self, ip, country, path, status, time_from, time_to) -> list[int]:
+        cache_key = self._search_ids_cache_key(ip, country, path, status, time_from, time_to)
         now = time.time()
 
         cached = self._cache.get(cache_key)
@@ -1072,7 +910,10 @@ class StatsService:
             if now - ts < 120:  # 120s TTL
                 return id_list
 
-        lock = self._locks.setdefault(cache_key, asyncio.Lock())
+        lock = self._locks.get(cache_key)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._locks[cache_key] = lock
         async with lock:
             cached = self._cache.get(cache_key)
             if cached:
@@ -1080,15 +921,16 @@ class StatsService:
                 if now - ts < 120:
                     return id_list
 
-            id_list = await self._fetch_matching_ids(ip, path, status, time_from, time_to)
+            id_list = await self._fetch_matching_ids(ip, country, path, status, time_from, time_to)
             self._cache[cache_key] = (id_list, time.time())
             return id_list
 
-    async def _fetch_matching_ids(self, ip, path, status, time_from, time_to) -> list[int]:
+    async def _fetch_matching_ids(self, ip, country, path, status, time_from, time_to) -> list[int]:
         params = {}
         where_clauses = []
 
         self._add_ip_filter(where_clauses, params, ip)
+        await self._add_country_filter(where_clauses, params, country)
         if path:
             where_clauses.append("path LIKE :path")
             params["path"] = f"%{path}%"
@@ -1107,19 +949,45 @@ class StatsService:
         rows = await self.fetch_rows(query, params)
         return [r["id"] for r in rows]
 
-    async def search_logs_count(self, ip, path, status, time_from, time_to):
-        is_unfiltered = not ip and not path and status is None and not time_from and not time_to
+    async def _fetch_filtered_count(self, ip, country, path, status, time_from, time_to) -> int:
+        params = {}
+        where_clauses = []
+
+        self._add_ip_filter(where_clauses, params, ip)
+        await self._add_country_filter(where_clauses, params, country)
+        if path:
+            where_clauses.append("path LIKE :path")
+            params["path"] = f"%{path}%"
+        if status is not None:
+            where_clauses.append("status = :status")
+            params["status"] = status
+        if time_from:
+            where_clauses.append("time >= :time_from")
+            params["time_from"] = self._parse_datetime(time_from)
+        if time_to:
+            where_clauses.append("time <= :time_to")
+            params["time_to"] = self._parse_datetime(time_to)
+
+        where_sql = " AND ".join(where_clauses) or "1=1"
+        return await self.fetch_scalar(f"SELECT COUNT(*) FROM logs WHERE {where_sql}", params)
+
+    async def search_logs_count(self, ip, country, path, status, time_from, time_to):
+        is_unfiltered = not ip and not country and not path and status is None and not time_from and not time_to
         if is_unfiltered:
             async def _count_all():
                 return await self.fetch_scalar("SELECT COUNT(*) FROM logs")
             return await self.db_cached("search_count_unfiltered", _count_all, ttl=60)
 
-        ids = await self.get_search_ids(ip, path, status, time_from, time_to)
+        if country:
+            return await self._fetch_filtered_count(ip, country, path, status, time_from, time_to)
+
+        ids = await self.get_search_ids(ip, country, path, status, time_from, time_to)
         return len(ids)
 
     async def search_logs_keyset(
         self,
         ip: str | None,
+        country: str | None,
         path: str | None,
         status: int | None,
         time_from: str | None,
@@ -1132,6 +1000,7 @@ class StatsService:
         where_clauses = []
 
         self._add_ip_filter(where_clauses, params, ip)
+        self._add_country_filter(where_clauses, params, country)
 
         if path:
             where_clauses.append("path LIKE :path")
@@ -1191,6 +1060,7 @@ class StatsService:
         page: int,
         page_size: int,
         ip: str | None = None,
+        country: str | None = None,
         path: str | None = None,
         status: int | None = None,
         time_from: str | None = None,
@@ -1199,7 +1069,7 @@ class StatsService:
     ):
         offset = page * page_size
 
-        if not ip and not path and status is None and not time_from and not time_to:
+        if not ip and not country and not path and status is None and not time_from and not time_to:
             async def _fetch_total():
                 return await self.fetch_scalar("SELECT COUNT(*) FROM logs")
 
@@ -1231,14 +1101,125 @@ class StatsService:
                 return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
 
             return await self.search_logs_keyset(
-                ip=None, path=None, status=None,
+                ip=None, country=None, path=None, status=None,
                 time_from=None, time_to=None,
                 limit=page_size,
                 cursor_id=target_id + 1,
             )
 
         # Filtered queries: Try to check the ID list cache
-        cache_key = self._search_ids_cache_key(ip, path, status, time_from, time_to)
+        cache_key = self._search_ids_cache_key(ip, country, path, status, time_from, time_to)
+        now = time.time()
+        cached = self._cache.get(cache_key)
+
+        id_list = None
+        if cached:
+            cached_ids, ts = cached
+            if now - ts < 120:
+                id_list = cached_ids
+
+        # If not cached, check if currently loading by checking lock status
+        if not id_list:
+            lock = self._locks.get(cache_key)
+            if lock and lock.locked():
+                # Wait for the lock and use the newly cached IDs
+                async with lock:
+                    cached = self._cache.get(cache_key)
+                    if cached:
+                        cached_ids, ts = cached
+                        if now - ts < 120:
+                            id_list = cached_ids
+
+    async def _fetch_rows_by_ids(self, id_list, offset, page_size):
+        if offset >= len(id_list):
+            return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
+        page_ids = id_list[offset : offset + page_size]
+        if not page_ids:
+            return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
+
+        placeholders = ", ".join(f":id_{i}" for i in range(len(page_ids)))
+        ids_params = {f"id_{i}": id_val for i, id_val in enumerate(page_ids)}
+
+        query = f"""
+            SELECT l.id, l.ip, l.time, l.method, l.path, l.status, l.size,
+                   r.country_code, r.country_name, r.isp
+            FROM logs l
+            LEFT JOIN resolved_ips r ON l.ip = r.ip
+            WHERE l.id IN ({placeholders})
+            ORDER BY l.id DESC
+        """
+        rows = await self.fetch_rows(query, ids_params)
+
+        if not rows:
+            return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
+
+        last = rows[-1]
+        next_cursor = last["time"].isoformat() if last["time"] else None
+        next_cursor_id = last["id"]
+
+        self._queue_missing_ip_resolutions(rows)
+
+        return {
+            "rows": [self._serialize_log_row(r) for r in rows],
+            "next_cursor": next_cursor,
+            "next_cursor_id": next_cursor_id,
+            "has_more": (offset + page_size) < len(id_list),
+        }
+
+    async def jump_to_page(
+        self,
+        page: int,
+        page_size: int,
+        ip: str | None = None,
+        country: str | None = None,
+        path: str | None = None,
+        status: int | None = None,
+        time_from: str | None = None,
+        time_to: str | None = None,
+        total_count: int | None = None,
+    ):
+        offset = page * page_size
+
+        if not ip and not country and not path and status is None and not time_from and not time_to:
+            async def _fetch_total():
+                return await self.fetch_scalar("SELECT COUNT(*) FROM logs")
+
+            unfiltered_total = await self.db_cached("search_count_unfiltered", _fetch_total, ttl=60)
+
+            if offset >= unfiltered_total:
+                return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
+
+            if offset > unfiltered_total / 2:
+                reverse_offset = unfiltered_total - offset - 1
+                if reverse_offset < 0:
+                    reverse_offset = 0
+                query = """
+                    SELECT id FROM logs
+                    ORDER BY id ASC
+                    LIMIT 1 OFFSET :reverse_offset
+                """
+                params = {"reverse_offset": reverse_offset}
+            else:
+                query = """
+                    SELECT id FROM logs
+                    ORDER BY id DESC
+                    LIMIT 1 OFFSET :offset
+                """
+                params = {"offset": offset}
+
+            target_id = await self.fetch_val(query, params)
+            if target_id is None:
+                return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
+
+            return await self.search_logs_keyset(
+                ip=None, country=None, path=None, status=None,
+                time_from=None, time_to=None,
+                limit=page_size,
+                cursor_id=target_id + 1,
+            )
+
+        # Filtered queries: Try to check the ID list cache
+        cache_key = self._search_ids_cache_key(ip, country, path, status, time_from, time_to)
         now = time.time()
         cached = self._cache.get(cache_key)
 
@@ -1261,89 +1242,23 @@ class StatsService:
                             id_list = cached_ids
 
         if id_list:
-            # Cache hit path (instant IN query lookup)
-            if offset >= len(id_list):
-                return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
-            page_ids = id_list[offset : offset + page_size]
-            if not page_ids:
-                return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
-
-            placeholders = ", ".join(f":id_{i}" for i in range(len(page_ids)))
-            ids_params = {f"id_{i}": id_val for i, id_val in enumerate(page_ids)}
-
-            query = f"""
-                SELECT l.id, l.ip, l.time, l.method, l.path, l.status, l.size,
-                       r.country_code, r.country_name, r.isp
-                FROM logs l
-                LEFT JOIN resolved_ips r ON l.ip = r.ip
-                WHERE l.id IN ({placeholders})
-                ORDER BY l.id DESC
-            """
-            rows = await self.fetch_rows(query, ids_params)
-
-            if not rows:
-                return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
-
-            last = rows[-1]
-            next_cursor = last["time"].isoformat() if last["time"] else None
-            next_cursor_id = last["id"]
-
-            self._queue_missing_ip_resolutions(rows)
-
-            return {
-                "rows": [self._serialize_log_row(r) for r in rows],
-                "next_cursor": next_cursor,
-                "next_cursor_id": next_cursor_id,
-                "has_more": (offset + page_size) < len(id_list),
-            }
+            return await self._fetch_rows_by_ids(id_list, offset, page_size)
 
         # Cache miss path
         if offset < 300:
             # For small offsets, use keyset-offset fallback (instant)
             # and trigger background caching of IDs for future requests
-            asyncio.create_task(self.get_search_ids(ip, path, status, time_from, time_to))
+            asyncio.create_task(self.get_search_ids(ip, country, path, status, time_from, time_to))
         else:
             # For deep offsets, fetch synchronously to populate the cache and get the IDs
-            id_list = await self.get_search_ids(ip, path, status, time_from, time_to)
-            if offset >= len(id_list):
-                return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
-            page_ids = id_list[offset : offset + page_size]
-            if not page_ids:
-                return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
-
-            placeholders = ", ".join(f":id_{i}" for i in range(len(page_ids)))
-            ids_params = {f"id_{i}": id_val for i, id_val in enumerate(page_ids)}
-
-            query = f"""
-                SELECT l.id, l.ip, l.time, l.method, l.path, l.status, l.size,
-                       r.country_code, r.country_name, r.isp
-                FROM logs l
-                LEFT JOIN resolved_ips r ON l.ip = r.ip
-                WHERE l.id IN ({placeholders})
-                ORDER BY l.id DESC
-            """
-            rows = await self.fetch_rows(query, ids_params)
-
-            if not rows:
-                return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
-
-            last = rows[-1]
-            next_cursor = last["time"].isoformat() if last["time"] else None
-            next_cursor_id = last["id"]
-
-            self._queue_missing_ip_resolutions(rows)
-
-            return {
-                "rows": [self._serialize_log_row(r) for r in rows],
-                "next_cursor": next_cursor,
-                "next_cursor_id": next_cursor_id,
-                "has_more": (offset + page_size) < len(id_list),
-            }
+            id_list = await self.get_search_ids(ip, country, path, status, time_from, time_to)
+            return await self._fetch_rows_by_ids(id_list, offset, page_size)
 
         # Fallback keyset-offset subquery lookup (if offset < 300 and cache miss)
         params = {}
         where_clauses = []
         self._add_ip_filter(where_clauses, params, ip)
+        await self._add_country_filter(where_clauses, params, country)
         if path:
             where_clauses.append("path LIKE :path")
             params["path"] = f"%{path}%"
@@ -1385,7 +1300,7 @@ class StatsService:
             return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
 
         return await self.search_logs_keyset(
-            ip=ip, path=path, status=status,
+            ip=ip, country=country, path=path, status=status,
             time_from=time_from, time_to=time_to,
             limit=page_size,
             cursor_id=target_id + 1,

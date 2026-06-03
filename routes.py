@@ -161,6 +161,7 @@ async def get_dashboard():
 @app.get("/stats/search")
 async def search_logs(
     ip: str = None,
+    country: str = None,
     path: str = None,
     status: int = None,
     time_from: str = None,
@@ -170,7 +171,7 @@ async def search_logs(
 ):
     # search is not cached
     try:
-        return await stats_service.search_logs(ip, path, status, time_from, time_to, limit, offset)
+        return await stats_service.search_logs(ip, country, path, status, time_from, time_to, limit, offset)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid datetime format") from exc
 
@@ -180,6 +181,7 @@ async def jump_to_page(
     page: int = Query(..., ge=0),
     page_size: int = Query(default=15, ge=1, le=500),
     ip: str = None,
+    country: str = None,
     path: str = None,
     status: int = None,
     time_from: str = None,
@@ -192,7 +194,7 @@ async def jump_to_page(
     """
     try:
         result = await stats_service.jump_to_page(
-            page, page_size, ip, path, status, time_from, time_to, total_count
+            page, page_size, ip, country, path, status, time_from, time_to, total_count
         )
         return result
     except ValueError as exc:
@@ -202,13 +204,14 @@ async def jump_to_page(
 @app.get("/stats/search/count")
 async def search_logs_count(
     ip: str = None,
+    country: str = None,
     path: str = None,
     status: int = None,
     time_from: str = None,
     time_to: str = None,
 ):
     try:
-        count = await stats_service.search_logs_count(ip, path, status, time_from, time_to)
+        count = await stats_service.search_logs_count(ip, country, path, status, time_from, time_to)
         return {"total": count}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid datetime format") from exc
@@ -217,6 +220,7 @@ async def search_logs_count(
 @app.get("/stats/search/keyset")
 async def search_logs_keyset(
     ip: str = None,
+    country: str = None,
     path: str = None,
     status: int = None,
     time_from: str = None,
@@ -227,7 +231,7 @@ async def search_logs_keyset(
 ):
     try:
         return await stats_service.search_logs_keyset(
-            ip, path, status, time_from, time_to, limit, cursor, cursor_id
+            ip, country, path, status, time_from, time_to, limit, cursor, cursor_id
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid datetime format") from exc

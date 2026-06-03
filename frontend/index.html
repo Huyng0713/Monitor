@@ -375,7 +375,7 @@
     /* Inputs */
     .search-toolbar {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr 2fr auto auto;
+      grid-template-columns: 1fr 1fr 1fr 1fr 2fr auto auto;
       gap: 12px;
       align-items: center;
       margin-bottom: 24px;
@@ -1071,8 +1071,12 @@
     </h2>
     <div class="search-toolbar">
       <div class="search-control">
-        <input id="search-ip" class="search-field" type="text" placeholder="IP Address...">
+        <input id="search-ip" class="search-field" type="text" placeholder="Exact IP Address...">
         <button class="search-clear" onclick="clearSearchField('search-ip')" title="Clear IP">×</button>
+      </div>
+      <div class="search-control">
+        <input id="search-country" class="search-field" type="text" placeholder="Country / Region...">
+        <button class="search-clear" onclick="clearSearchField('search-country')" title="Clear country">×</button>
       </div>
       <div class="search-control">
         <input id="search-url" class="search-field" type="text" placeholder="Request Path (e.g. /api)...">
@@ -1291,7 +1295,9 @@
           <svg style="width:20px;height:20px;color:var(--primary);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 002 2h2a2.5 2.5 0 002.5-2.5V10a2 2 0 00-2-2h-1.5a2 2 0 01-2-2V4.302M12 2a10 10 0 100 20 10 10 0 000-20z"></path>
           </svg>
-          Top Countries
+          <span id="countries-title-container" style="display: inline-flex; align-items: center; gap: 6px;">
+            <span id="countries-title-text">Top Countries</span>
+          </span>
           <button class="reload-btn" id="reload-btn-top_countries" onclick="reloadPanel('top_countries')" title="Reload Top Countries">
             <svg class="refresh-icon" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 10.5A7.5 7.5 0 1112 18h-1.5M4.5 10.5H9m-4.5 0v-4.5" />
@@ -1518,6 +1524,8 @@
 
     // Client-side cache for Top IPs to prevent re-fetching on scale toggle
     let cachedTopIpsData = null;
+    let cachedCountriesData = null;
+    let isCountriesDrilledDown = false;
 
     // Track active fetch controllers for panel reload/stop functionality
     const activeControllers = {};
@@ -2584,8 +2592,93 @@
       const container = document.getElementById("countries-chart-container");
       if (container) container.classList.remove("loading");
 
-      const labels = data.map(d => d.country);
-      const counts = data.map(d => d.count);
+      // Cache the raw data for drill down
+      cachedCountriesData = data;
+      isCountriesDrilledDown = false;
+
+      // Group countries to ensure "minimum slices"
+      const totalCount = data.reduce((sum, d) => sum + d.count, 0) || 1;
+      
+      let mergedData = [];
+      let othersCount = 0;
+      
+      // Sort in descending order
+      const sortedData = [...data].sort((a, b) => b.count - a.count);
+      
+      // Separate normal countries from existing Others/Unknown
+      const countriesOnly = sortedData.filter(d => d.country !== 'Others' && d.country !== 'Unknown');
+      const specialGroups = sortedData.filter(d => d.country === 'Others' || d.country === 'Unknown');
+      
+      // Initial count for Others includes existing Others/Unknown
+      specialGroups.forEach(d => othersCount += d.count);
+      
+      // Group countries that have < 5% of total requests, or beyond the top 4
+      countriesOnly.forEach((d, index) => {
+        const pct = (d.count / totalCount) * 100;
+        if (index < 4 && pct >= 5) {
+          mergedData.push({ country: d.country, count: d.count });
+        } else {
+          othersCount += d.count;
+        }
+      });
+      
+      // Fallback: If we ended up with no slices at all (every country is < 5%),
+      // let's just display the top 3 countries regardless of their percentage.
+      if (mergedData.length === 0 && countriesOnly.length > 0) {
+        mergedData = [];
+        othersCount = 0;
+        countriesOnly.forEach((d, index) => {
+          if (index < 3) {
+            mergedData.push({ country: d.country, count: d.count });
+          } else {
+            othersCount += d.count;
+          }
+        });
+        specialGroups.forEach(d => othersCount += d.count);
+      }
+      
+      if (othersCount > 0) {
+        mergedData.push({ country: 'Others', count: othersCount });
+      }
+
+      // Re-sort the final mergedData, keeping Others at the end
+      const finalSlices = mergedData.filter(d => d.country !== 'Others').sort((a, b) => b.count - a.count);
+      const othersSlice = mergedData.find(d => d.country === 'Others');
+      if (othersSlice) {
+        finalSlices.push(othersSlice);
+      }
+      
+      renderCountriesChart(finalSlices, totalCount);
+    }
+
+    function renderCountriesChart(finalSlices, totalCount) {
+      const labels = finalSlices.map(d => d.country);
+      const counts = finalSlices.map(d => d.count);
+      const percentages = counts.map(count => Number(((count / totalCount) * 100).toFixed(2)));
+
+      // Enforce a minimum display percentage (3.0%) for rendering so all slices are visible
+      const minRenderPct = 3.0;
+      const renderData = percentages.map((pct, idx) => {
+        if (counts[idx] > 0) {
+          return Math.max(pct, minRenderPct);
+        }
+        return 0;
+      });
+
+      const colors = finalSlices.map((d, idx) => {
+        if (d.country === 'Others') return '#64748b'; // grey for Others
+        const palette = [
+          '#38bdf8', // primary
+          '#818cf8', // accent
+          '#34d399', // success
+          '#fbbf24', // warning
+          '#f87171', // danger
+          '#f472b6', // pink
+          '#a78bfa', // purple
+          '#2dd4bf', // teal
+        ];
+        return palette[idx % palette.length];
+      });
 
       if (countriesChart) {
         countriesChart.destroy();
@@ -2599,18 +2692,10 @@
         data: {
           labels: labels,
           datasets: [{
-            data: counts,
-            backgroundColor: [
-              '#38bdf8', // primary
-              '#818cf8', // accent
-              '#34d399', // success
-              '#fbbf24', // warning
-              '#f87171', // danger
-              '#f472b6', // pink
-              '#a78bfa', // purple
-              '#2dd4bf', // teal
-              '#64748b'  // others / unknown
-            ],
+            data: renderData,
+            actualPercentages: percentages,
+            originalData: counts,
+            backgroundColor: colors,
             borderWidth: 1,
             borderColor: 'rgba(3, 7, 18, 0.6)'
           }]
@@ -2618,16 +2703,55 @@
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          onClick: (event, elements, chart) => {
+            if (elements.length > 0 && !isCountriesDrilledDown) {
+              const elementIndex = elements[0].index;
+              const label = chart.data.labels[elementIndex];
+              if (label === 'Others') {
+                showCountriesDrillDown();
+              }
+            }
+          },
+          onHover: (event, elements, chart) => {
+            if (elements.length > 0 && !isCountriesDrilledDown) {
+              const elementIndex = elements[0].index;
+              const label = chart.data.labels[elementIndex];
+              if (label === 'Others') {
+                event.native.target.style.cursor = 'pointer';
+                return;
+              }
+            }
+            if (!isCountriesDrilledDown) {
+              event.native.target.style.cursor = 'default';
+            }
+          },
           plugins: {
             legend: {
               position: 'right',
               labels: {
                 boxWidth: 12,
+                generateLabels(chart) {
+                  const dataset = chart.data.datasets[0];
+                  return chart.data.labels.map((label, index) => {
+                    const meta = chart.getDatasetMeta(0);
+                    const style = meta.controller.getStyle(index);
+                    const actualPercent = dataset.actualPercentages[index] || 0;
+                    return {
+                      text: `${label} ${actualPercent.toFixed(actualPercent < 1 ? 2 : 1)}%`,
+                      fillStyle: style.backgroundColor,
+                      strokeStyle: style.borderColor,
+                      lineWidth: style.borderWidth,
+                      hidden: !chart.getDataVisibility(index),
+                      index,
+                      fontColor: '#ffffff'
+                    };
+                  });
+                },
                 font: {
                   family: 'Outfit',
                   size: 11
                 },
-                color: '#9ca3af'
+                color: '#ffffff'
               }
             },
             tooltip: {
@@ -2635,12 +2759,97 @@
               borderColor: 'rgba(255, 255, 255, 0.1)',
               borderWidth: 1,
               titleFont: { family: 'Outfit' },
-              bodyFont: { family: 'Outfit' }
+              bodyFont: { family: 'Outfit' },
+              callbacks: {
+                label: ctx => {
+                  const count = ctx.dataset.originalData?.[ctx.dataIndex] || 0;
+                  const percentage = ctx.dataset.actualPercentages?.[ctx.dataIndex] || 0;
+                  return ` ${percentage.toFixed(2)}% (${count.toLocaleString()} requests)`;
+                }
+              }
             }
           },
           cutout: '65%'
         }
       });
+    }
+
+    function showCountriesDrillDown() {
+      if (!cachedCountriesData) return;
+      isCountriesDrilledDown = true;
+      
+      // Update Title with Back button
+      const titleContainer = document.getElementById("countries-title-container");
+      if (titleContainer) {
+        titleContainer.innerHTML = `
+          <span style="cursor: pointer; display: inline-flex; align-items: center; gap: 4px; color: var(--primary); font-weight: 600;" onclick="backFromCountriesDrillDown()">
+            <svg style="width:16px;height:16px;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"/>
+            </svg>
+            Back
+          </span>
+          <span style="color: var(--text-secondary); margin: 0 4px; font-weight: normal;">/</span>
+          <span style="color: var(--text-primary); font-size: 14px;">Others Breakdown</span>
+        `;
+      }
+      
+      const totalCount = cachedCountriesData.reduce((sum, d) => sum + d.count, 0) || 1;
+      const sortedData = [...cachedCountriesData].sort((a, b) => b.count - a.count);
+      const countriesOnly = sortedData.filter(d => d.country !== 'Others' && d.country !== 'Unknown');
+      const specialGroups = sortedData.filter(d => d.country === 'Others' || d.country === 'Unknown');
+      
+      let topCountries = [];
+      countriesOnly.forEach((d, index) => {
+        const pct = (d.count / totalCount) * 100;
+        if (index < 4 && pct >= 5) {
+          topCountries.push(d.country);
+        }
+      });
+      
+      if (topCountries.length === 0 && countriesOnly.length > 0) {
+        countriesOnly.forEach((d, index) => {
+          if (index < 3) {
+            topCountries.push(d.country);
+          }
+        });
+      }
+      
+      // All items NOT in topCountries belong to the Others drilldown
+      const drillDownData = sortedData.filter(d => !topCountries.includes(d.country));
+      const totalDdCount = drillDownData.reduce((sum, d) => sum + d.count, 0) || 1;
+      
+      let finalDrillDown = [];
+      let ddOthersCount = 0;
+      
+      drillDownData.forEach(d => {
+        const pct = (d.count / totalDdCount) * 100;
+        if (pct >= 0.005 && d.country !== 'Others' && d.country !== 'Unknown') {
+          finalDrillDown.push({ country: d.country, count: d.count });
+        } else {
+          ddOthersCount += d.count;
+        }
+      });
+      
+      if (ddOthersCount > 0) {
+        finalDrillDown.push({ country: 'Others', count: ddOthersCount });
+      }
+      
+      renderCountriesChart(finalDrillDown, totalDdCount);
+    }
+
+    function backFromCountriesDrillDown() {
+      isCountriesDrilledDown = false;
+      
+      // Restore title
+      const titleContainer = document.getElementById("countries-title-container");
+      if (titleContainer) {
+        titleContainer.innerHTML = `<span id="countries-title-text">Top Countries</span>`;
+      }
+      
+      // Re-populate using original data
+      if (cachedCountriesData) {
+        populateTopCountries(cachedCountriesData);
+      }
     }
 
     function populateTopISPs(data) {
@@ -2955,6 +3164,7 @@
       if (targetPage < 0 || targetPage >= totalPages) return;
 
       const ip = document.getElementById("search-ip").value.trim();
+      const country = document.getElementById("search-country").value.trim();
       const path = document.getElementById("search-url").value.trim();
       const status = document.getElementById("search-status").value;
       const from = searchDateParam("search-from");
@@ -2984,6 +3194,7 @@
           page_size: String(pageSize),
         });
         if (ip) params.set("ip", ip);
+        if (country) params.set("country", country);
         if (path) params.set("path", path);
         if (status) params.set("status", status);
         if (from) params.set("time_from", from);
@@ -3015,6 +3226,7 @@
 
     async function runSearch(page = 0) {
       const ip = document.getElementById("search-ip").value.trim();
+      const country = document.getElementById("search-country").value.trim();
       const path = document.getElementById("search-url").value.trim();
       const status = document.getElementById("search-status").value;
       const from = searchDateParam("search-from");
@@ -3031,6 +3243,7 @@
         offset: String(page * pageSize),
       });
       if (ip) params.set("ip", ip);
+      if (country) params.set("country", country);
       if (path) params.set("path", path);
       if (status) params.set("status", status);
       if (from) params.set("time_from", from);
@@ -3075,6 +3288,7 @@
 
           const countParams = new URLSearchParams();
           if (ip) countParams.set("ip", ip);
+          if (country) countParams.set("country", country);
           if (path) countParams.set("path", path);
           if (status) countParams.set("status", status);
           if (from) countParams.set("time_from", from);
@@ -3255,6 +3469,7 @@
 
     function clearSearch() {
       clearSearchField("search-ip");
+      clearSearchField("search-country");
       clearSearchField("search-url");
       clearSearchField("search-status");
       clearSearchField("search-from");
