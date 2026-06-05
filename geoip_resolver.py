@@ -14,14 +14,13 @@ def init_readers():
     if _readers_initialized:
         return True
 
-    import maxminddb
-
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    geoip_dir = os.path.join(base_dir, "geoip")
-    country_path = os.path.join(geoip_dir, "GeoLite2-Country.mmdb")
-    asn_path = os.path.join(geoip_dir, "GeoLite2-ASN.mmdb")
-
     try:
+        import maxminddb
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        geoip_dir = os.path.join(base_dir, "geoip")
+        country_path = os.path.join(geoip_dir, "GeoLite2-Country.mmdb")
+        asn_path = os.path.join(geoip_dir, "GeoLite2-ASN.mmdb")
+
         if os.path.exists(country_path):
             _country_reader = maxminddb.open_database(country_path)
             log_activity(f"Loaded MaxMind Country DB: {country_path}")
@@ -45,6 +44,16 @@ def _is_private_ip(ip: str) -> bool:
     except ValueError:
         return False
 
+def clean_isp_name(isp: str | None) -> str:
+    if not isp:
+        return "Unknown"
+    import re
+    # Strip prefixes like "AS12345 ", "AS12345 - ", etc.
+    cleaned = re.sub(r'(?i)^as\s*\d+\s*[-–]?\s*', '', isp).strip()
+    if not cleaned:
+        return isp.strip()
+    return cleaned
+
 def lookup_offline(ip: str) -> dict | None:
     init_readers()
     if not _country_reader and not _asn_reader:
@@ -65,7 +74,7 @@ def lookup_offline(ip: str) -> dict | None:
         if _asn_reader:
             asn_data = _asn_reader.get(ip)
             if asn_data:
-                result["isp"] = asn_data.get("autonomous_system_organization")
+                result["isp"] = clean_isp_name(asn_data.get("autonomous_system_organization"))
 
         if "country_code" in result or "isp" in result:
             return {
@@ -78,11 +87,63 @@ def lookup_offline(ip: str) -> dict | None:
         log_exception(f"Offline lookup failed for IP: {ip}")
     return None
 
-def _fetch_from_api(ip: str) -> dict:
-    url = f"http://ip-api.com/json/{ip}"
-    req = urllib.request.Request(url, headers={'User-Agent': 'Nginx-Monitor/1.0'})
-    with urllib.request.urlopen(req, timeout=8) as response:
-        return json.loads(response.read().decode('utf-8'))
+def _fetch_with_retry(ip: str) -> dict:
+    import urllib.request
+    import json
+    import time
+
+    last_exc = None
+    # 1. Try ipwhois.app (HTTPS)
+    for attempt in range(3):
+        try:
+            url = f"https://ipwhois.app/json/{ip}"
+            req = urllib.request.Request(url, headers={'User-Agent': 'Nginx-Monitor/1.0'})
+            with urllib.request.urlopen(req, timeout=5) as response:
+                res_data = json.loads(response.read().decode('utf-8'))
+                if res_data.get("success") is True:
+                    return {
+                        "country_code": res_data.get("country_code"),
+                        "country_name": res_data.get("country"),
+                        "isp": clean_isp_name(res_data.get("isp") or res_data.get("org")),
+                        "source": "online",
+                    }
+                else:
+                    return {
+                        "country_code": "unknown",
+                        "country_name": "Unknown",
+                        "isp": "Unknown",
+                        "source": "online",
+                    }
+        except Exception as e:
+            last_exc = e
+            time.sleep(0.5 * (attempt + 1))
+
+    # 2. Fallback to ip-api.com (HTTP)
+    for attempt in range(3):
+        try:
+            url = f"http://ip-api.com/json/{ip}"
+            req = urllib.request.Request(url, headers={'User-Agent': 'Nginx-Monitor/1.0'})
+            with urllib.request.urlopen(req, timeout=5) as response:
+                res_data = json.loads(response.read().decode('utf-8'))
+                if res_data.get("status") == "success":
+                    return {
+                        "country_code": res_data.get("countryCode"),
+                        "country_name": res_data.get("country"),
+                        "isp": clean_isp_name(res_data.get("isp") or res_data.get("org")),
+                        "source": "online",
+                    }
+                else:
+                    return {
+                        "country_code": "unknown",
+                        "country_name": "Unknown",
+                        "isp": "Unknown",
+                        "source": "online",
+                    }
+        except Exception as e:
+            last_exc = e
+            time.sleep(0.5 * (attempt + 1))
+
+    raise last_exc or Exception("All GeoIP APIs failed")
 
 async def resolve_ip(ip: str) -> dict:
     # 1. Check if Private/LAN IP
@@ -99,31 +160,17 @@ async def resolve_ip(ip: str) -> dict:
     if offline_res:
         return offline_res
 
-    # 3. Fallback to Free Online API
+    # 3. Fallback to Free Online APIs with Retry
     import asyncio
     try:
-        data = await asyncio.to_thread(_fetch_from_api, ip.strip())
-        if data.get("status") == "success":
-            return {
-                "country_code": data.get("countryCode"),
-                "country_name": data.get("country"),
-                "isp": data.get("isp") or data.get("org") or "Unknown",
-                "source": "online",
-            }
-        else:
-            return {
-                "country_code": "unknown",
-                "country_name": "Unknown",
-                "isp": "Unknown",
-                "source": "online",
-            }
+        return await asyncio.to_thread(_fetch_with_retry, ip.strip())
     except Exception:
         log_exception(f"Online GeoIP lookup failed for IP: {ip}")
         return {
             "country_code": "unknown",
             "country_name": "Unknown",
             "isp": "Unknown",
-            "source": "unknown",
+            "source": "failed",
         }
 
 def close_readers():

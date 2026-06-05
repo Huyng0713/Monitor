@@ -6,5 +6,6 @@ __pycache__/
 .env
 logs/*.log
 logs/*.log.*
+*.log
 .venv
 scratch/

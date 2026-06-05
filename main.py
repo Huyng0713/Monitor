@@ -3,9 +3,11 @@ from log import log_activity, log_exception
 
 if __name__ == "__main__":
     import uvicorn
-    log_activity("Starting Nginx Monitor server: host=0.0.0.0 port=8000")
+    import os
+    port = int(os.getenv("PORT", "4000"))
+    log_activity(f"Starting Nginx Monitor server: host=0.0.0.0 port={port}")
     try:
-        uvicorn.run(app, host="0.0.0.0", port=4000)
+        uvicorn.run(app, host="0.0.0.0", port=port)
     except Exception:
         log_exception("Uvicorn server terminated unexpectedly")
         raise

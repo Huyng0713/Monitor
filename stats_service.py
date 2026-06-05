@@ -2,6 +2,7 @@ import asyncio
 import json
 import time
 import weakref
+import contextvars
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import text
@@ -28,6 +29,8 @@ PYTHON_DATE_FORMATS = {
     "hour": "%Y-%m-%dT%H",
     "day": "%Y-%m-%d",
 }
+
+background_tasks_var = contextvars.ContextVar("background_tasks", default=None)
 
 
 class StatsService:
@@ -69,24 +72,36 @@ class StatsService:
 
                 res = await geoip_resolver.resolve_ip(ip)
 
-                async def _update_op(target_ip=ip, resolved_res=res):
-                    async with write_connection() as session:
-                        await session.execute(text("""
-                            INSERT INTO resolved_ips (ip, country_code, country_name, isp, status, updated_at)
-                            VALUES (:ip, :country_code, :country_name, :isp, 'resolved', NOW())
-                            ON CONFLICT (ip) DO UPDATE
-                            SET country_code = EXCLUDED.country_code,
-                                country_name = EXCLUDED.country_name,
-                                isp = EXCLUDED.isp,
-                                status = 'resolved',
-                                updated_at = NOW()
-                        """), {
-                            "ip": target_ip,
-                            "country_code": resolved_res.get("country_code"),
-                            "country_name": resolved_res.get("country_name"),
-                            "isp": resolved_res.get("isp")
-                        })
-                await self._write_with_retry(_update_op)
+                if res.get("source") == "failed":
+                    async def _update_failed_op(target_ip=ip):
+                        async with write_connection() as session:
+                            await session.execute(text("""
+                                INSERT INTO resolved_ips (ip, country_code, country_name, isp, status, updated_at)
+                                VALUES (:ip, NULL, 'Unknown (Error)', 'Unknown (Error)', 'failed', NOW())
+                                ON CONFLICT (ip) DO UPDATE
+                                SET status = 'failed',
+                                    updated_at = NOW()
+                            """), {"ip": target_ip})
+                    await self._write_with_retry(_update_failed_op)
+                else:
+                    async def _update_op(target_ip=ip, resolved_res=res):
+                        async with write_connection() as session:
+                            await session.execute(text("""
+                                INSERT INTO resolved_ips (ip, country_code, country_name, isp, status, updated_at)
+                                VALUES (:ip, :country_code, :country_name, :isp, 'resolved', NOW())
+                                ON CONFLICT (ip) DO UPDATE
+                                SET country_code = EXCLUDED.country_code,
+                                    country_name = EXCLUDED.country_name,
+                                    isp = EXCLUDED.isp,
+                                    status = 'resolved',
+                                    updated_at = NOW()
+                            """), {
+                                "ip": target_ip,
+                                "country_code": resolved_res.get("country_code"),
+                                "country_name": resolved_res.get("country_name"),
+                                "isp": resolved_res.get("isp")
+                            })
+                    await self._write_with_retry(_update_op)
 
                 if res.get("source") == "online":
                     await asyncio.sleep(1.5)
@@ -105,11 +120,7 @@ class StatsService:
                         pass
 
     async def _queue_ip_resolution(self, ip: str):
-        self._ensure_worker_running()
-        if ip in self._resolving_ips:
-            return
-        self._resolving_ips.add(ip)
-
+        # Assumes ip in self._resolving_ips is checked synchronously before task creation
         from db import write_connection
         from sqlalchemy import text
 
@@ -205,7 +216,11 @@ class StatsService:
             parsed_val = json.loads(db_val)
             self._cache[key] = (parsed_val, now)
             if db_age >= ttl:
-                asyncio.create_task(self._refresh_stat_in_db(key, fetch_fn))
+                bg_tasks = background_tasks_var.get()
+                if bg_tasks is not None:
+                    bg_tasks.add_task(self._refresh_stat_in_db, key, fetch_fn)
+                else:
+                    asyncio.create_task(self._refresh_stat_in_db(key, fetch_fn))
             return parsed_val
 
         lock = self._locks.get(key)
@@ -338,9 +353,15 @@ class StatsService:
         return await self._execute_with_retry(_op)
 
     def _queue_missing_ip_resolutions(self, rows) -> None:
+        self._ensure_worker_running()
+        if self._geoip_queue.qsize() >= 1000:
+            return
         for row in rows:
-            if row.get("ip") and row.get("country_code") is None:
-                asyncio.create_task(self._queue_ip_resolution(row["ip"]))
+            ip = row.get("ip")
+            if ip and row.get("country_code") is None:
+                if ip not in self._resolving_ips:
+                    self._resolving_ips.add(ip)
+                    asyncio.create_task(self._queue_ip_resolution(ip))
 
     def _serialize_log_row(self, row) -> dict:
         row_time = row.get("time")
@@ -619,7 +640,9 @@ class StatsService:
                 SELECT ip_counts.ip
                 FROM ip_counts
                 LEFT JOIN resolved_ips r ON ip_counts.ip = r.ip
-                WHERE r.ip IS NULL OR r.status <> 'resolved'
+                WHERE r.ip IS NULL 
+                   OR (r.status = 'pending' AND r.updated_at < NOW() - INTERVAL '10 minutes')
+                   OR (r.status = 'failed' AND r.updated_at < NOW() - INTERVAL '1 hour')
                 ORDER BY ip_counts.cnt DESC
                 LIMIT 100
             )
@@ -667,7 +690,9 @@ class StatsService:
                 SELECT ip_counts.ip
                 FROM ip_counts
                 LEFT JOIN resolved_ips r ON ip_counts.ip = r.ip
-                WHERE r.ip IS NULL OR r.status <> 'resolved'
+                WHERE r.ip IS NULL 
+                   OR (r.status = 'pending' AND r.updated_at < NOW() - INTERVAL '10 minutes')
+                   OR (r.status = 'failed' AND r.updated_at < NOW() - INTERVAL '1 hour')
                 ORDER BY ip_counts.cnt DESC
                 LIMIT 100
             )
@@ -1000,7 +1025,7 @@ class StatsService:
         where_clauses = []
 
         self._add_ip_filter(where_clauses, params, ip)
-        self._add_country_filter(where_clauses, params, country)
+        await self._add_country_filter(where_clauses, params, country)
 
         if path:
             where_clauses.append("path LIKE :path")
@@ -1054,81 +1079,6 @@ class StatsService:
             "next_cursor_id": next_cursor_id,
             "has_more": len(rows) == limit,
         }
-
-    async def jump_to_page(
-        self,
-        page: int,
-        page_size: int,
-        ip: str | None = None,
-        country: str | None = None,
-        path: str | None = None,
-        status: int | None = None,
-        time_from: str | None = None,
-        time_to: str | None = None,
-        total_count: int | None = None,
-    ):
-        offset = page * page_size
-
-        if not ip and not country and not path and status is None and not time_from and not time_to:
-            async def _fetch_total():
-                return await self.fetch_scalar("SELECT COUNT(*) FROM logs")
-
-            unfiltered_total = await self.db_cached("search_count_unfiltered", _fetch_total, ttl=60)
-
-            if offset >= unfiltered_total:
-                return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
-
-            if offset > unfiltered_total / 2:
-                reverse_offset = unfiltered_total - offset - 1
-                if reverse_offset < 0:
-                    reverse_offset = 0
-                query = """
-                    SELECT id FROM logs
-                    ORDER BY id ASC
-                    LIMIT 1 OFFSET :reverse_offset
-                """
-                params = {"reverse_offset": reverse_offset}
-            else:
-                query = """
-                    SELECT id FROM logs
-                    ORDER BY id DESC
-                    LIMIT 1 OFFSET :offset
-                """
-                params = {"offset": offset}
-
-            target_id = await self.fetch_val(query, params)
-            if target_id is None:
-                return {"rows": [], "next_cursor": None, "next_cursor_id": None, "has_more": False}
-
-            return await self.search_logs_keyset(
-                ip=None, country=None, path=None, status=None,
-                time_from=None, time_to=None,
-                limit=page_size,
-                cursor_id=target_id + 1,
-            )
-
-        # Filtered queries: Try to check the ID list cache
-        cache_key = self._search_ids_cache_key(ip, country, path, status, time_from, time_to)
-        now = time.time()
-        cached = self._cache.get(cache_key)
-
-        id_list = None
-        if cached:
-            cached_ids, ts = cached
-            if now - ts < 120:
-                id_list = cached_ids
-
-        # If not cached, check if currently loading by checking lock status
-        if not id_list:
-            lock = self._locks.get(cache_key)
-            if lock and lock.locked():
-                # Wait for the lock and use the newly cached IDs
-                async with lock:
-                    cached = self._cache.get(cache_key)
-                    if cached:
-                        cached_ids, ts = cached
-                        if now - ts < 120:
-                            id_list = cached_ids
 
     async def _fetch_rows_by_ids(self, id_list, offset, page_size):
         if offset >= len(id_list):

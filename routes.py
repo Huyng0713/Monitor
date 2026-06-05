@@ -4,7 +4,7 @@ import time
 from collections import deque
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, BackgroundTasks, Depends
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -12,7 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from db import dispose_engine, init_db
 from log import get_log_paths, log_activity, log_exception, log_file_issue
-from stats_service import StatsService
+from stats_service import StatsService, background_tasks_var
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 INDEX_PATH = os.path.join(BASE_DIR, "frontend/index.html")
@@ -20,6 +20,11 @@ VALID_GRANULARITIES = {"minute", "hour", "day"}
 stats_service = StatsService()
 
 CACHE_HEADERS = {"Cache-Control": "public, s-maxage=30, stale-while-revalidate=60"}
+
+
+def set_bg_tasks(background_tasks: BackgroundTasks):
+    background_tasks_var.set(background_tasks)
+    return background_tasks
 
 
 @asynccontextmanager
@@ -41,7 +46,7 @@ async def lifespan(_: FastAPI):
         log_exception("Failed to dispose database engine or close geoip readers")
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan, dependencies=[Depends(set_bg_tasks)])
 app.add_middleware(GZipMiddleware, minimum_size=500)
 
 

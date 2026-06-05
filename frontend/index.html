@@ -1543,6 +1543,7 @@
 
     // Cache helper constants
     const CACHE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
+    const CACHE_HARD_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 
     function getLocalCache(key) {
       try {
@@ -1551,6 +1552,10 @@
         const parsed = JSON.parse(item);
         if (!parsed || !parsed.timestamp || !parsed.data) return null;
         const age = Date.now() - parsed.timestamp;
+        if (age > CACHE_HARD_EXPIRY_MS) {
+          localStorage.removeItem(key);
+          return null;
+        }
         return { data: parsed.data, stale: age > CACHE_MAX_AGE_MS };
       } catch (e) {
         console.error("Cache read failed", e);
@@ -2422,8 +2427,25 @@
       loadStatusCodes(activeBtn ? activeBtn.dataset.range : "hour");
     }
 
-    async function loadTopIPs(force = false) {
+    async function loadTopIPs(force = false, silent = false) {
       const key = "cache_top_ips";
+      if (silent) {
+        const controller = new AbortController();
+        if (activeControllers['top_ips']) activeControllers['top_ips'].abort();
+        activeControllers['top_ips'] = controller;
+        try {
+          const data = await fetchJson("/stats/top-ips?limit=8", { signal: controller.signal });
+          populateTopIPs(data);
+          saveLocalCache(key, data);
+        } catch (error) {
+          if (error.name !== 'AbortError') console.error("Silent top_ips reload failed", error);
+        } finally {
+          if (activeControllers['top_ips'] === controller) {
+            delete activeControllers['top_ips'];
+          }
+        }
+        return;
+      }
       if (!force) {
         const cached = getLocalCache(key);
         if (cached) {
@@ -2478,8 +2500,25 @@
       }
     }
 
-    async function loadTopCountries(force = false) {
+    async function loadTopCountries(force = false, silent = false) {
       const key = "cache_top_countries";
+      if (silent) {
+        const controller = new AbortController();
+        if (activeControllers['top_countries']) activeControllers['top_countries'].abort();
+        activeControllers['top_countries'] = controller;
+        try {
+          const data = await fetchJson("/stats/top-countries", { signal: controller.signal });
+          populateTopCountries(data);
+          saveLocalCache(key, data);
+        } catch (error) {
+          if (error.name !== 'AbortError') console.error("Silent top_countries reload failed", error);
+        } finally {
+          if (activeControllers['top_countries'] === controller) {
+            delete activeControllers['top_countries'];
+          }
+        }
+        return;
+      }
       if (!force) {
         const cached = getLocalCache(key);
         if (cached) {
@@ -2533,8 +2572,25 @@
       }
     }
 
-    async function loadTopISPs(force = false) {
+    async function loadTopISPs(force = false, silent = false) {
       const key = "cache_top_isps";
+      if (silent) {
+        const controller = new AbortController();
+        if (activeControllers['top_isps']) activeControllers['top_isps'].abort();
+        activeControllers['top_isps'] = controller;
+        try {
+          const data = await fetchJson("/stats/top-isps", { signal: controller.signal });
+          populateTopISPs(data);
+          saveLocalCache(key, data);
+        } catch (error) {
+          if (error.name !== 'AbortError') console.error("Silent top_isps reload failed", error);
+        } finally {
+          if (activeControllers['top_isps'] === controller) {
+            delete activeControllers['top_isps'];
+          }
+        }
+        return;
+      }
       if (!force) {
         const cached = getLocalCache(key);
         if (cached) {
@@ -2964,6 +3020,7 @@
           }
         }
       });
+      if (typeof startIPResolvePolling === 'function') startIPResolvePolling();
     }
 
     function toggleIpScale() {
@@ -2976,8 +3033,29 @@
       }
     }
 
-    async function loadRightStats(force = false) {
+    async function loadRightStats(force = false, silent = false) {
       const key = "cache_right_stats";
+      if (silent) {
+        const controller = new AbortController();
+        if (activeControllers['right_stats']) activeControllers['right_stats'].abort();
+        activeControllers['right_stats'] = controller;
+        try {
+          const [pathsData, codesData] = await Promise.all([
+            fetchJson("/stats/top-urls?limit=8", { signal: controller.signal }),
+            fetchJson("/stats/status-codes", { signal: controller.signal })
+          ]);
+          populateTopUrls(pathsData);
+          populateStatusCodesBreakdown(codesData);
+          saveLocalCache(key, { pathsData, codesData });
+        } catch (error) {
+          if (error.name !== 'AbortError') console.error("Silent right_stats reload failed", error);
+        } finally {
+          if (activeControllers['right_stats'] === controller) {
+            delete activeControllers['right_stats'];
+          }
+        }
+        return;
+      }
       if (!force) {
         const cached = getLocalCache(key);
         if (cached) {
@@ -3224,7 +3302,7 @@
       }
     }
 
-    async function runSearch(page = 0) {
+    async function runSearch(page = 0, silent = false) {
       const ip = document.getElementById("search-ip").value.trim();
       const country = document.getElementById("search-country").value.trim();
       const path = document.getElementById("search-url").value.trim();
@@ -3255,17 +3333,19 @@
       activeControllers['search'] = controller;
 
       try {
-        const skeletonRow = `
-          <tr>
-            <td><div class="skeleton-line" style="width: 100px;"></div></td>
-            <td><div class="skeleton-line" style="width: 140px;"></div></td>
-            <td><div class="skeleton-line" style="width: 180px;"></div></td>
-            <td><div class="skeleton-line" style="width: 260px;"></div></td>
-            <td><div class="skeleton-line" style="width: 40px;"></div></td>
-            <td><div class="skeleton-line" style="width: 60px;"></div></td>
-          </tr>
-        `;
-        document.getElementById("search-results").innerHTML = skeletonRow.repeat(6);
+        if (!silent) {
+          const skeletonRow = `
+            <tr>
+              <td><div class="skeleton-line" style="width: 100px;"></div></td>
+              <td><div class="skeleton-line" style="width: 140px;"></div></td>
+              <td><div class="skeleton-line" style="width: 180px;"></div></td>
+              <td><div class="skeleton-line" style="width: 260px;"></div></td>
+              <td><div class="skeleton-line" style="width: 40px;"></div></td>
+              <td><div class="skeleton-line" style="width: 60px;"></div></td>
+            </tr>
+          `;
+          document.getElementById("search-results").innerHTML = skeletonRow.repeat(6);
+        }
         const payload = await fetchJson(`/stats/search?${params.toString()}`, { signal: controller.signal });
         const data = payload.rows || [];
         currentSearchPage = page;
@@ -3326,6 +3406,7 @@
         if (activeControllers['search'] === controller) {
           delete activeControllers['search'];
         }
+        if (typeof startIPResolvePolling === 'function') startIPResolvePolling();
       }
     }
 
@@ -3760,6 +3841,44 @@
       });
     }
 
+    function hasPendingResolutions() {
+      if (document.querySelector(".pulsing-loading") !== null) {
+        return true;
+      }
+      if (typeof cachedTopIpsData !== "undefined" && cachedTopIpsData && cachedTopIpsData.some(d => d.country_code === 'pending' || d.country_name === 'Loading...')) {
+        return true;
+      }
+      return false;
+    }
+
+    let ipResolvePollInterval = null;
+    function startIPResolvePolling() {
+      if (ipResolvePollInterval) return;
+      if (!hasPendingResolutions()) return;
+
+      ipResolvePollInterval = setInterval(async () => {
+        if (!hasPendingResolutions()) {
+          clearInterval(ipResolvePollInterval);
+          ipResolvePollInterval = null;
+          return;
+        }
+
+        try {
+          await Promise.allSettled([
+            loadTopIPs(false, true),
+            loadTopCountries(false, true),
+            loadTopISPs(false, true),
+            loadRightStats(false, true),
+            document.getElementById("search-results") && document.querySelector(".pulsing-loading")
+              ? runSearch(currentSearchPage, true)
+              : Promise.resolve()
+          ]);
+        } catch (e) {
+          console.error("IP resolution polling failed", e);
+        }
+      }, 3000);
+    }
+
     async function initDashboard() {
       showSkeletons();  // ← hiển thị ngay, không chờ fetch
       
@@ -3783,6 +3902,8 @@
         loadTopISPs(),
         loadSystemLogs()
       ]);
+
+      startIPResolvePolling();
     }
 
     window.onload = initDashboard;
