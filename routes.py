@@ -3,8 +3,9 @@ import os
 import time
 from collections import deque
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 
-from fastapi import FastAPI, HTTPException, Query, Request, BackgroundTasks, Depends
+from fastapi import FastAPI, HTTPException, Query, Request, BackgroundTasks, Depends, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -16,10 +17,13 @@ from stats_service import StatsService, background_tasks_var
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 INDEX_PATH = os.path.join(BASE_DIR, "frontend/index.html")
-VALID_GRANULARITIES = {"minute", "hour", "day"}
+VALID_GRANULARITIES = {"second", "minute", "hour", "day"}
 stats_service = StatsService()
+IS_VERCEL = os.getenv("VERCEL") == "1"
+LOCAL_CLIENT_HOSTS = {"127.0.0.1", "::1", "localhost"}
+SERVER_STARTED_AT = datetime.now()
 
-CACHE_HEADERS = {"Cache-Control": "public, s-maxage=30, stale-while-revalidate=60"}
+CACHE_HEADERS = {"Cache-Control": "no-store"}
 
 
 def set_bg_tasks(background_tasks: BackgroundTasks):
@@ -32,13 +36,24 @@ async def lifespan(_: FastAPI):
     try:
         await init_db()
         stats_service.start_background_tasks()
+
+        # Background loops are only reliable on long-lived local/server hosts.
+        # Vercel should use /simulation/tick via Vercel Cron instead.
+        if not IS_VERCEL and os.getenv("SIMULATION_ENABLED", "0") == "1":
+            from simulator import simulator
+            simulator.start()
+
         log_activity("API startup completed")
     except Exception:
         log_exception("API lifespan startup failed (database may be offline, server starting anyway)")
-    
+
     yield
-    
+
     try:
+        if not IS_VERCEL:
+            from simulator import simulator
+            simulator.stop()
+
         await dispose_engine()
         import geoip_resolver
         geoip_resolver.close_readers()
@@ -103,6 +118,29 @@ def json_cached(data):
     return JSONResponse(content=data, headers=CACHE_HEADERS)
 
 
+def is_local_request(request: Request) -> bool:
+    client_host = request.client.host if request.client else ""
+    host_header = request.headers.get("host", "").split(":")[0]
+    return (
+        client_host in LOCAL_CLIENT_HOSTS
+        or host_header in LOCAL_CLIENT_HOSTS
+        or host_header == "0.0.0.0"
+        or host_header.startswith("192.168.")
+        or host_header.startswith("10.")
+        or any(host_header.startswith(f"172.{i}.") for i in range(16, 32))
+    )
+
+
+def require_cron_secret(request: Request) -> None:
+    if not IS_VERCEL and is_local_request(request):
+        return
+    cron_secret = os.getenv("CRON_SECRET")
+    if not cron_secret:
+        raise HTTPException(status_code=401, detail="CRON_SECRET is not configured")
+    if request.headers.get("authorization") != f"Bearer {cron_secret}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
 @app.get("/")
 def index():
     if not os.path.exists(INDEX_PATH):
@@ -152,14 +190,22 @@ async def get_traffic(
     return json_cached(await stats_service.get_traffic(require_granularity(granularity), ip, limit, offset))
 
 
+@app.get("/stats/traffic-series")
+async def get_traffic_series(range: str = Query(default="30s")):
+    try:
+        return json_cached(await stats_service.get_traffic_series(range))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/stats/anomalies")
 async def get_anomalies():
     return json_cached(await stats_service.get_anomalies())
 
 
 @app.get("/stats/dashboard")
-async def get_dashboard():
-    data = await stats_service.get_dashboard_data()
+async def get_dashboard(include_expensive: bool = Query(default=False)):
+    data = await stats_service.get_dashboard_data(include_expensive=include_expensive)
     return json_cached(data)
 
 
@@ -251,9 +297,19 @@ async def get_status_codes_over_time(
     return json_cached(await stats_service.get_status_codes_over_time(require_granularity(granularity), limit, offset))
 
 
+@app.get("/stats/status-codes-series")
+async def get_status_codes_series(range: str = Query(default="30s")):
+    try:
+        return json_cached(await stats_service.get_status_codes_series(range))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/stats/logs")
 async def get_system_logs(
     lines: int = Query(default=50, ge=1, le=500),
+    since_start: bool = Query(default=True),
+    since_hours: int = Query(default=24, ge=0, le=24 * 30),
     reset: bool = Query(default=False)
 ):
     log_paths = get_log_paths()
@@ -267,12 +323,103 @@ async def get_system_logs(
             raise HTTPException(status_code=500, detail="Unable to clear system log file")
 
     try:
+        if since_start:
+            cutoff = SERVER_STARTED_AT
+        elif since_hours == 0:
+            cutoff = None
+        else:
+            cutoff = datetime.now() - timedelta(hours=since_hours)
+        timestamp_format = "%Y-%m-%d %H:%M:%S"
+        filtered_lines = deque(maxlen=lines)
+        include_current_entry = cutoff is None
+
         with open(log_paths["error"], "r", encoding="utf-8") as file_obj:
-            recent_lines = list(deque(file_obj, maxlen=lines))
-        log_activity("System log tail requested: lines=%s returned=%s", lines, len(recent_lines))
+            for line in file_obj:
+                line_time = None
+                if len(line) >= 19:
+                    try:
+                        line_time = datetime.strptime(line[:19], timestamp_format)
+                    except ValueError:
+                        line_time = None
+
+                if line_time is not None:
+                    include_current_entry = cutoff is None or line_time >= cutoff
+
+                if include_current_entry:
+                    filtered_lines.append(line)
+
+        recent_lines = list(filtered_lines)
+        log_activity(
+            "System log tail requested: lines=%s since_start=%s since_hours=%s returned=%s",
+            lines,
+            since_start,
+            since_hours,
+            len(recent_lines),
+        )
+        if not recent_lines and since_start:
+            return {"lines": ["No error logs since server startup."]}
+        if not recent_lines and since_hours != 0:
+            return {"lines": [f"No error logs in the last {since_hours} hours."]}
         return {"lines": recent_lines}
     except FileNotFoundError:
         return {"lines": ["No log file found yet."]}
     except OSError:
         log_exception("Unable to read system log file: path=%s", log_paths["error"])
         raise HTTPException(status_code=500, detail="Unable to read system log file")
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    from ws_manager import manager as ws_manager
+    await ws_manager.connect(websocket)
+    try:
+        while True:
+            # Keep connection open, wait for client messages/pings
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket)
+    except Exception as e:
+        log_exception(f"WebSocket connection error: {e}")
+        ws_manager.disconnect(websocket)
+
+
+@app.get("/simulation/tick")
+async def run_simulation_tick(
+    request: Request,
+    batch_size: int | None = Query(default=None, ge=1, le=1000),
+    spread_seconds: int = Query(default=59, ge=0, le=3600),
+):
+    require_cron_secret(request)
+    from simulator import simulator
+    result = await simulator.tick(batch_size=batch_size, broadcast=False, spread_seconds=spread_seconds)
+    log_activity(
+        "Simulation cron tick completed: generated=%s inserted=%s",
+        result["generated"],
+        result["inserted"],
+    )
+    return {"status": "ok", **result}
+
+
+@app.post("/simulation/start")
+async def start_simulation(request: Request):
+    require_cron_secret(request)
+    if IS_VERCEL:
+        raise HTTPException(status_code=400, detail="Use /simulation/tick with Vercel Cron instead of background simulation")
+    from simulator import simulator
+    simulator.start()
+    return {"status": "started", "info": simulator.get_status()}
+
+
+@app.post("/simulation/stop")
+async def stop_simulation(request: Request):
+    require_cron_secret(request)
+    from simulator import simulator
+    simulator.stop()
+    return {"status": "stopped", "info": simulator.get_status()}
+
+
+@app.get("/simulation/status")
+async def get_simulation_status(request: Request):
+    require_cron_secret(request)
+    from simulator import simulator
+    return {"mode": "vercel-cron" if IS_VERCEL else "local-background", **simulator.get_status()}

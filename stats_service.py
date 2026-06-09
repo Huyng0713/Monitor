@@ -1,4 +1,5 @@
 import asyncio
+import calendar
 import json
 import time
 import weakref
@@ -10,24 +11,40 @@ from sqlalchemy import text
 from db import read_connection, write_connection
 
 DATE_TRUNC_UNITS = {
+    "second": "second",
     "minute": "minute",
     "hour": "hour",
     "day": "day",
+    "month": "month",
 }
 TO_CHAR_FORMATS = {
+    "second": "YYYY-MM-DD\"T\"HH24:MI:SS",
     "minute": "YYYY-MM-DD\"T\"HH24:MI",
     "hour": "YYYY-MM-DD\"T\"HH24",
     "day": "YYYY-MM-DD",
+    "month": "YYYY-MM",
 }
 TIMEDELTA_UNITS = {
+    "second": timedelta(seconds=1),
     "minute": timedelta(minutes=1),
     "hour": timedelta(hours=1),
     "day": timedelta(days=1),
 }
 PYTHON_DATE_FORMATS = {
+    "second": "%Y-%m-%dT%H:%M:%S",
     "minute": "%Y-%m-%dT%H:%M",
     "hour": "%Y-%m-%dT%H",
     "day": "%Y-%m-%d",
+    "month": "%Y-%m",
+}
+TRAFFIC_RANGE_CONFIG = {
+    "30s": {"base_granularity": "second", "bucket_delta": timedelta(seconds=30), "points": 60, "format": "%Y-%m-%dT%H:%M:%S"},
+    "1m": {"base_granularity": "minute", "bucket_delta": timedelta(minutes=1), "points": 60, "format": "%Y-%m-%dT%H:%M"},
+    "15m": {"base_granularity": "minute", "bucket_delta": timedelta(minutes=15), "points": 96, "format": "%Y-%m-%dT%H:%M"},
+    "1h": {"base_granularity": "hour", "bucket_delta": timedelta(hours=1), "points": 168, "format": "%Y-%m-%dT%H"},
+    "1d": {"base_granularity": "day", "bucket_delta": timedelta(days=1), "points": 30, "format": "%Y-%m-%d"},
+    "1w": {"base_granularity": "day", "bucket_delta": timedelta(days=7), "points": 26, "format": "%Y-%m-%d"},
+    "1mo": {"base_granularity": "month", "bucket_delta": "month", "points": 12, "format": "%Y-%m"},
 }
 
 background_tasks_var = contextvars.ContextVar("background_tasks", default=None)
@@ -45,6 +62,46 @@ class StatsService:
 
     def start_background_tasks(self):
         self._ensure_worker_running()
+
+    async def clear_realtime_cache(self):
+        # 1. Clear in-memory cache keys for real-time panels
+        keys_to_remove = [
+            k for k in self._cache.keys()
+            if k == "summary"
+            or k == "max_time"
+            or k.startswith("status_series")
+            or k.startswith("traffic")
+            or k.startswith("traffic_series")
+            or k.startswith("status_over_time")
+            or k.startswith("anomalies")
+            or k.startswith("search_count_unfiltered")
+            or k.startswith("search:default")
+        ]
+        for k in keys_to_remove:
+            self._cache.pop(k, None)
+
+        # 2. Clear from database cached_stats table
+        from db import write_connection
+        from sqlalchemy import text
+        async def _delete_op():
+            async with write_connection() as session:
+                await session.execute(text("""
+                    DELETE FROM cached_stats
+                    WHERE key = 'summary'
+                       OR key LIKE 'status_series%'
+                       OR key LIKE 'traffic%'
+                       OR key LIKE 'traffic_series%'
+                       OR key LIKE 'status_over_time%'
+                       OR key LIKE 'anomalies%'
+                       OR key LIKE 'search_count_unfiltered%'
+                       OR key LIKE 'search:default%'
+                """))
+        try:
+            await self._write_with_retry(_delete_op)
+        except Exception:
+            from log import log_exception
+            log_exception("Failed to clear DB cached_stats for real-time keys")
+
 
     def _ensure_worker_running(self):
         if not hasattr(self, "_geoip_queue"):
@@ -244,7 +301,7 @@ class StatsService:
                         await session.execute(text("""
                             INSERT INTO cached_stats (key, value, updated_at)
                             VALUES (:key, :value, NOW())
-                            ON CONFLICT (key) DO UPDATE 
+                            ON CONFLICT (key) DO UPDATE
                             SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at
                         """), {"key": target_key, "value": target_serialized})
                 await self._write_with_retry(_write_op)
@@ -403,12 +460,12 @@ class StatsService:
                 SELECT ip FROM logs GROUP BY ip
             ),
             counts AS (
-                SELECT 
+                SELECT
                     COUNT(*) AS total_requests,
                     COUNT(*) FILTER (WHERE status >= 400) AS errors
                 FROM logs
             )
-            SELECT 
+            SELECT
                 c.total_requests,
                 c.errors,
                 (SELECT COUNT(*) FROM unique_ips) AS unique_ips
@@ -481,6 +538,134 @@ class StatsService:
             return await self._cached(key, lambda: self._fetch_traffic(granularity, ip, limit, offset))
         return await self.db_cached(key, lambda: self._fetch_traffic(granularity, ip, limit, offset))
 
+    async def get_traffic_series(self, range_key: str):
+        if range_key not in TRAFFIC_RANGE_CONFIG:
+            raise ValueError(f"Invalid traffic range: {range_key}")
+        return await self.db_cached(
+            f"traffic_series:v2:{range_key}",
+            lambda: self._fetch_traffic_series(range_key),
+            ttl=30,
+        )
+
+    @staticmethod
+    def _truncate_datetime(dt: datetime, granularity: str) -> datetime:
+        if granularity == "second":
+            return dt.replace(microsecond=0)
+        if granularity == "minute":
+            return dt.replace(second=0, microsecond=0)
+        if granularity == "hour":
+            return dt.replace(minute=0, second=0, microsecond=0)
+        return dt.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    @staticmethod
+    def _align_to_bucket(dt: datetime, bucket_delta) -> datetime:
+        if bucket_delta == "month":
+            return dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+        bucket_seconds = int(bucket_delta.total_seconds())
+        if bucket_seconds <= 0:
+            return dt
+
+        if bucket_seconds >= 86400:
+            day_start = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+            epoch = datetime(1970, 1, 1, tzinfo=day_start.tzinfo)
+            days_since_epoch = (day_start.date() - epoch.date()).days
+            bucket_days = max(bucket_seconds // 86400, 1)
+            aligned_days = days_since_epoch - (days_since_epoch % bucket_days)
+            return epoch + timedelta(days=aligned_days)
+
+        day_start = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        seconds_since_day_start = int((dt - day_start).total_seconds())
+        aligned_seconds = seconds_since_day_start - (seconds_since_day_start % bucket_seconds)
+        return day_start + timedelta(seconds=aligned_seconds)
+
+    @staticmethod
+    def _add_bucket_delta(dt: datetime, bucket_delta, steps: int = 1) -> datetime:
+        if bucket_delta == "month":
+            month_index = dt.month - 1 + steps
+            year = dt.year + month_index // 12
+            month = month_index % 12 + 1
+            day = min(dt.day, calendar.monthrange(year, month)[1])
+            return dt.replace(year=year, month=month, day=day)
+        return dt + steps * bucket_delta
+
+    @staticmethod
+    def _moving_average(values: list[int], window: int) -> list[float | None]:
+        result = []
+        rolling_sum = 0
+        for index, value in enumerate(values):
+            rolling_sum += value
+            if index >= window:
+                rolling_sum -= values[index - window]
+            if index >= window - 1:
+                result.append(round(rolling_sum / window, 2))
+            else:
+                result.append(None)
+        return result
+
+    async def _fetch_traffic_series(self, range_key: str):
+        config = TRAFFIC_RANGE_CONFIG[range_key]
+        granularity = config["base_granularity"]
+        bucket_delta = config["bucket_delta"]
+        points = config["points"]
+        unit = DATE_TRUNC_UNITS[granularity]
+        fmt = config["format"]
+
+        max_time = await self.get_max_time()
+        end_period = self._align_to_bucket(max_time, bucket_delta)
+        start_period = self._add_bucket_delta(end_period, bucket_delta, -(points - 1))
+        end_exclusive = self._add_bucket_delta(end_period, bucket_delta)
+
+        rows = await self.fetch_rows(f"""
+            SELECT
+                date_trunc('{unit}', l.time) AS period_raw,
+                COUNT(*) AS count,
+                COUNT(*) FILTER (WHERE l.status >= 400) AS errors
+            FROM logs l
+            WHERE l.time >= :start_period
+              AND l.time < :end_exclusive
+            GROUP BY 1
+            ORDER BY 1
+        """, {
+            "start_period": start_period,
+            "end_exclusive": end_exclusive,
+        })
+
+        row_map = {}
+        for row in rows:
+            period_raw = row["period_raw"]
+            if period_raw:
+                bucket_label = self._align_to_bucket(period_raw, bucket_delta).strftime(fmt)
+                item = row_map.setdefault(bucket_label, {"count": 0, "errors": 0})
+                item["count"] += int(row["count"] or 0)
+                item["errors"] += int(row["errors"] or 0)
+
+        labels = []
+        counts = []
+        errors = []
+        for index in range(points):
+            period = self._add_bucket_delta(start_period, bucket_delta, index)
+            label = period.strftime(fmt)
+            labels.append(label)
+            item = row_map.get(label, {"count": 0, "errors": 0})
+            counts.append(item["count"])
+            errors.append(item["errors"])
+
+        return {
+            "range": range_key,
+            "granularity": range_key,
+            "base_granularity": granularity,
+            "labels": labels,
+            "counts": counts,
+            "errors": errors,
+            "volume": counts,
+            "ma": {
+                "ma7": self._moving_average(counts, 7),
+                "ma25": self._moving_average(counts, 25),
+                "ma99": self._moving_average(counts, 99),
+            },
+        }
+
     async def _fetch_traffic(self, granularity: str, ip: str | None, limit: int, offset: int):
         unit = DATE_TRUNC_UNITS[granularity]
         unit_delta = TIMEDELTA_UNITS[granularity]
@@ -519,7 +704,9 @@ class StatsService:
         rows = await self.fetch_rows(query, params)
 
         def format_period_py(dt: datetime, gran: str) -> str:
-            if gran == "minute":
+            if gran == "second":
+                return dt.strftime("%Y-%m-%dT%H:%M:%S")
+            elif gran == "minute":
                 return dt.strftime("%Y-%m-%dT%H:%M")
             elif gran == "hour":
                 return dt.strftime("%Y-%m-%dT%H")
@@ -568,7 +755,7 @@ class StatsService:
                 GROUP BY ip
                 HAVING COUNT(*) > 10
             )
-            SELECT 
+            SELECT
                 (SELECT coalesce(json_agg(h), '[]'::json) FROM (SELECT ip, to_char(minute, 'YYYY-MM-DD"T"HH24:MI') as minute, count FROM high_freq ORDER BY count DESC) h) AS high_frequency,
                 (SELECT coalesce(json_agg(c4), '[]'::json) FROM (SELECT ip, count FROM many_404 ORDER BY count DESC) c4) AS many_404s,
                 (SELECT coalesce(json_agg(c5), '[]'::json) FROM (SELECT ip, count FROM many_500 ORDER BY count DESC) c5) AS many_500s
@@ -593,27 +780,33 @@ class StatsService:
             "many_500s": many_500,
         }
 
-    async def get_dashboard_data(self):
-        from log import log_exception
+    async def get_dashboard_data(self, include_expensive: bool = False):
+        from log import log_activity, log_exception
 
         async def _load_panel(name: str, coro):
             try:
                 return name, await asyncio.wait_for(coro, timeout=20)
             except asyncio.CancelledError:
                 raise
+            except TimeoutError:
+                log_activity("Dashboard panel timed out: name=%s", name)
+                return name, None
             except Exception:
                 log_exception("Dashboard panel failed: name=%s", name)
                 return name, None
 
         panel_tasks = [
             _load_panel("summary", self.get_summary()),
-            _load_panel("top_ips", self.get_top_ips(8)),
-            _load_panel("top_urls", self.get_top_urls(8)),
-            _load_panel("status_codes", self.get_status_codes()),
-            _load_panel("traffic", self.get_traffic("hour", None, 48, 0)),
-            _load_panel("status_over_time", self.get_status_codes_over_time("hour", 48, 0)),
+            _load_panel("traffic", self.get_traffic_series("30s")),
+            _load_panel("status_over_time", self.get_status_codes_series("30s")),
             _load_panel("anomalies", self.get_anomalies()),
         ]
+        if include_expensive:
+            panel_tasks.extend([
+                _load_panel("top_ips", self.get_top_ips(8)),
+                _load_panel("top_urls", self.get_top_urls(8)),
+                _load_panel("status_codes", self.get_status_codes()),
+            ])
         results = await asyncio.gather(*panel_tasks)
         return {name: value for name, value in results if value is not None}
 
@@ -640,7 +833,7 @@ class StatsService:
                 SELECT ip_counts.ip
                 FROM ip_counts
                 LEFT JOIN resolved_ips r ON ip_counts.ip = r.ip
-                WHERE r.ip IS NULL 
+                WHERE r.ip IS NULL
                    OR (r.status = 'pending' AND r.updated_at < NOW() - INTERVAL '10 minutes')
                    OR (r.status = 'failed' AND r.updated_at < NOW() - INTERVAL '1 hour')
                 ORDER BY ip_counts.cnt DESC
@@ -690,7 +883,7 @@ class StatsService:
                 SELECT ip_counts.ip
                 FROM ip_counts
                 LEFT JOIN resolved_ips r ON ip_counts.ip = r.ip
-                WHERE r.ip IS NULL 
+                WHERE r.ip IS NULL
                    OR (r.status = 'pending' AND r.updated_at < NOW() - INTERVAL '10 minutes')
                    OR (r.status = 'failed' AND r.updated_at < NOW() - INTERVAL '1 hour')
                 ORDER BY ip_counts.cnt DESC
@@ -734,6 +927,75 @@ class StatsService:
             f"status_over_time:{granularity}:{limit}:{offset}",
             lambda: self._fetch_status_codes_over_time(granularity, limit, offset),
         )
+
+    async def get_status_codes_series(self, range_key: str):
+        if range_key not in TRAFFIC_RANGE_CONFIG:
+            raise ValueError(f"Invalid status range: {range_key}")
+        return await self.db_cached(
+            f"status_series:v2:{range_key}",
+            lambda: self._fetch_status_codes_series(range_key),
+            ttl=30,
+        )
+
+    async def _fetch_status_codes_series(self, range_key: str):
+        config = TRAFFIC_RANGE_CONFIG[range_key]
+        granularity = config["base_granularity"]
+        bucket_delta = config["bucket_delta"]
+        points = config["points"]
+        unit = DATE_TRUNC_UNITS[granularity]
+        fmt = config["format"]
+
+        max_time = await self.get_max_time()
+        end_period = self._align_to_bucket(max_time, bucket_delta)
+        start_period = self._add_bucket_delta(end_period, bucket_delta, -(points - 1))
+        end_exclusive = self._add_bucket_delta(end_period, bucket_delta)
+
+        rows = await self.fetch_rows(f"""
+            SELECT
+                date_trunc('{unit}', l.time) AS period_raw,
+                l.status,
+                COUNT(*) AS count
+            FROM logs l
+            WHERE l.time >= :start_period
+              AND l.time < :end_exclusive
+            GROUP BY 1, 2
+            ORDER BY 1, 2
+        """, {
+            "start_period": start_period,
+            "end_exclusive": end_exclusive,
+        })
+
+        labels = []
+        row_map = {}
+        statuses = set()
+        for row in rows:
+            period_raw = row["period_raw"]
+            if not period_raw:
+                continue
+            bucket_label = self._align_to_bucket(period_raw, bucket_delta).strftime(fmt)
+            status = str(row["status"]) if row["status"] is not None else "Unknown"
+            statuses.add(status)
+            bucket = row_map.setdefault(bucket_label, {})
+            bucket[status] = bucket.get(status, 0) + int(row["count"] or 0)
+
+        for index in range(points):
+            period = self._add_bucket_delta(start_period, bucket_delta, index)
+            labels.append(period.strftime(fmt))
+
+        datasets = []
+        for status in sorted(statuses):
+            datasets.append({
+                "label": status,
+                "data": [row_map.get(label, {}).get(status, 0) for label in labels],
+            })
+
+        return {
+            "range": range_key,
+            "granularity": range_key,
+            "base_granularity": granularity,
+            "labels": labels,
+            "datasets": datasets,
+        }
 
     async def _fetch_status_codes_over_time(self, granularity: str, limit: int, offset: int):
         unit = DATE_TRUNC_UNITS[granularity]
@@ -836,13 +1098,13 @@ class StatsService:
         """
         exact_val = country.lower()
         like_val = f"%{country.lower()}%"
-        
+
         rows = await self.fetch_rows(query, {
             "country_exact": exact_val,
             "country_like": like_val
         })
         matching_ips = [r["ip"] for r in rows]
-        
+
         if not matching_ips:
             where_clauses.append("1=0")
         else:

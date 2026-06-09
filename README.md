@@ -85,6 +85,8 @@ python3 main.py
 
 Ứng dụng mặc định chạy tại [http://localhost:8000](http://localhost:8000).
 
+Khi chạy dashboard trên `localhost`, frontend sẽ tự gọi `/simulation/tick` mỗi 3 giây để mô phỏng dữ liệu realtime. Cơ chế này chỉ áp dụng cho request local; trên Vercel endpoint vẫn được bảo vệ bằng `CRON_SECRET` và được gọi bởi Vercel Cron.
+
 ## Deploy lên Vercel
 
 Repo này đã có sẵn:
@@ -104,10 +106,37 @@ Lưu ý quan trọng:
 
 - Vercel dùng serverless function, nên filesystem là tạm thời.
 - Database giờ phải là PostgreSQL/Supabase ngoài qua `DATABASE_URL`.
+- Mô phỏng realtime trên Vercel nên chạy qua Vercel Cron, không chạy background loop trong process.
+- Đặt biến môi trường `CRON_SECRET` trên Vercel. Vercel sẽ gửi giá trị này qua header `Authorization: Bearer <CRON_SECRET>` khi gọi cron.
 - Chạy `alembic upgrade head` trước hoặc trong pipeline deploy để đảm bảo bảng/index đã sẵn sàng.
 - Log file vẫn chạy tạm ở `/tmp/nginx-monitor` khi deploy trên Vercel.
 - Nếu cần production thật, nên chuyển log sang dịch vụ ngoài hoặc stdout collector.
 - Vercel phù hợp để demo UI/API hơn là chạy hệ thống monitor ghi file liên tục.
+
+Repo đã cấu hình cron trong `vercel.json`:
+
+```json
+{
+  "path": "/simulation/tick",
+  "schedule": "* * * * *"
+}
+```
+
+Lịch mỗi phút yêu cầu Vercel Pro/Enterprise. Nếu dùng Hobby, đổi lịch cron sang tần suất hằng ngày hoặc dùng scheduler ngoài gọi endpoint này.
+
+Có thể test thủ công endpoint cron:
+
+```bash
+curl -H "Authorization: Bearer $CRON_SECRET" \
+  "https://YOUR_DOMAIN.vercel.app/simulation/tick"
+```
+
+Có thể điều chỉnh lượng log giả mỗi tick:
+
+```env
+SIMULATION_BATCH_MIN=80
+SIMULATION_BATCH_MAX=220
+```
 
 Nếu sau khi deploy vẫn lỗi, kiểm tra:
 

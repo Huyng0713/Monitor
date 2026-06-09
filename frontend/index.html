@@ -641,6 +641,27 @@
       animation: pulse 1.6s infinite;
     }
 
+    .pulse-success {
+      background-color: var(--success);
+      box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+      animation: pulse-green 1.6s infinite;
+    }
+
+    @keyframes pulse-green {
+      0% {
+        transform: scale(0.9);
+        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5);
+      }
+      70% {
+        transform: scale(1);
+        box-shadow: 0 0 0 6px rgba(34, 197, 94, 0);
+      }
+      100% {
+        transform: scale(0.9);
+        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+      }
+    }
+
     @keyframes pulse {
       0% {
         transform: scale(0.9);
@@ -967,6 +988,41 @@
     </div>
   </div>
 
+  <!-- Live Traffic Stream -->
+  <div class="chart-card full-width" style="margin-bottom: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 12px;">
+      <h2 style="font-size: 16px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 8px; margin: 0;">
+        <span class="pulse-indicator pulse-success"></span>
+        Live Traffic Stream
+      </h2>
+      <div id="ws-status" style="font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px;">
+        <span style="width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; display: inline-block; transition: background 0.3s;" id="ws-status-dot"></span>
+        <span id="ws-status-text">Polling...</span>
+      </div>
+    </div>
+    <div class="table-container" style="max-height: 250px; overflow-y: auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>IP Address</th>
+            <th>Timestamp</th>
+            <th>Method</th>
+            <th>Path</th>
+            <th>Status</th>
+            <th>Bytes</th>
+          </tr>
+        </thead>
+        <tbody id="live-feed-results">
+          <tr>
+            <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 20px;">
+              Waiting for live traffic... (Vercel Cron will generate new data)
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- Threat & Anomaly Detection Center -->
   <div class="chart-card full-width" style="margin-bottom: 24px;">
     <div class="threat-header">
@@ -1104,7 +1160,7 @@
           </svg>
         </button>
         <button type="button" id="date-range-clear" class="search-clear" onclick="clearDateRange(event)" title="Clear date range" style="right: 36px; display: none;">×</button>
-        
+
         <div id="date-range-menu" class="date-range-menu" onclick="event.stopPropagation()">
           <div style="font-weight: 600; font-size: 13px; color: var(--text-secondary); margin-bottom: 6px;">Presets</div>
           <div class="presets-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px;">
@@ -1115,7 +1171,7 @@
             <button type="button" class="preset-btn" onclick="setDatePreset(30, 'day')">30d</button>
             <button type="button" class="preset-btn" onclick="setDatePreset(0, 'all')">All</button>
           </div>
-          
+
           <div style="font-weight: 600; font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 12px;">Custom Range</div>
           <div class="custom-range" style="display: flex; flex-direction: column; gap: 8px;">
             <div style="display: flex; flex-direction: column; gap: 4px;">
@@ -1182,7 +1238,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6">
             </path>
           </svg>
-          Traffic Speed (Requests / Hour)
+          Realtime Traffic
           <button class="reload-btn" id="reload-btn-traffic" onclick="reloadPanel('traffic')" title="Reload Traffic">
             <svg class="refresh-icon" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 10.5A7.5 7.5 0 1112 18h-1.5M4.5 10.5H9m-4.5 0v-4.5" />
@@ -1192,34 +1248,24 @@
             </svg>
           </button>
         </h2>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <input id="traffic-ip-search" type="text" placeholder="Filter by IP..." class="search-field"
-            style="width:180px; height:36px; font-size:13px;">
-          <button id="traffic-scale-toggle" class="toggle-btn" onclick="toggleTrafficScale()"
-            style="height:36px; padding:0 12px; font-size:13px;">Log Scale</button>
+        <div class="btn-group" id="traffic-range-group" style="flex-wrap:wrap;">
+          <button class="traffic-range-btn toggle-btn active" data-range="30s" style="padding: 6px 12px; font-size: 13px;">30s</button>
+          <button class="traffic-range-btn toggle-btn" data-range="1m" style="padding: 6px 12px; font-size: 13px;">1m</button>
+          <button class="traffic-range-btn toggle-btn" data-range="15m" style="padding: 6px 12px; font-size: 13px;">15m</button>
+          <button class="traffic-range-btn toggle-btn" data-range="1h" style="padding: 6px 12px; font-size: 13px;">1h</button>
+          <button class="traffic-range-btn toggle-btn" data-range="1d" style="padding: 6px 12px; font-size: 13px;">1d</button>
+          <button class="traffic-range-btn toggle-btn" data-range="1w" style="padding: 6px 12px; font-size: 13px;">1w</button>
+          <button class="traffic-range-btn toggle-btn" data-range="1mo" style="padding: 6px 12px; font-size: 13px;">1mo</button>
+          <input id="traffic-ip-search" type="hidden" value="">
         </div>
       </div>
-      <div id="traffic-chart-container" class="chart-wrapper" style="height: 350px; position: relative; width: 100%;">
+      <div id="traffic-chart-container" class="chart-wrapper" style="height: 430px; position: relative; width: 100%;">
         <div class="chart-loader"></div>
-        <div class="skeleton-chart-placeholder"
-          style="position: absolute; inset: 0; display: none; flex-direction: column; justify-content: flex-end; padding: 20px; gap: 15px; z-index: 5;">
-          <div style="display: flex; align-items: flex-end; height: 100%; gap: 10px; width: 100%;">
-            <div class="skeleton-line" style="height: 40%; width: 8%;"></div>
-            <div class="skeleton-line" style="height: 65%; width: 8%;"></div>
-            <div class="skeleton-line" style="height: 50%; width: 8%;"></div>
-            <div class="skeleton-line" style="height: 85%; width: 8%;"></div>
-            <div class="skeleton-line" style="height: 30%; width: 8%;"></div>
-            <div class="skeleton-line" style="height: 75%; width: 8%;"></div>
-            <div class="skeleton-line" style="height: 90%; width: 8%;"></div>
-            <div class="skeleton-line" style="height: 55%; width: 8%;"></div>
-            <div class="skeleton-line" style="height: 70%; width: 8%;"></div>
-            <div class="skeleton-line" style="height: 45%; width: 8%;"></div>
-          </div>
-        </div>
         <!-- Scrollable wrapper: canvas grows to fit data, but container clips it -->
-        <div id="traffic-scroll-outer" style="overflow-x: auto; width: 100%; height: 350px;">
-          <div id="traffic-scroll-inner" style="height: 350px; min-width: 100%; position: relative;">
-            <canvas id="trafficChart" style="height: 350px;"></canvas>
+        <div id="traffic-scroll-outer" style="overflow-x: auto; width: 100%; height: 430px;">
+          <div id="traffic-scroll-inner" style="height: 430px; min-width: 100%; position: relative;">
+            <canvas id="trafficChart" style="height: 300px;"></canvas>
+            <canvas id="trafficVolumeChart" style="height: 100px; margin-top: 10px;"></canvas>
           </div>
         </div>
       </div>
@@ -1247,14 +1293,15 @@
           </button>
         </h2>
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-          <div class="btn-group">
-            <button class="range-btn" data-range="minute" style="padding: 6px 12px; font-size: 13px;">Min</button>
-            <button class="range-btn active" data-range="hour" style="padding: 6px 12px; font-size: 13px;">Hour</button>
-            <button class="range-btn" data-range="day" style="padding: 6px 12px; font-size: 13px;">Day</button>
+          <div class="btn-group" id="status-range-group" style="flex-wrap:wrap;">
+            <button class="status-range-btn toggle-btn active" data-range="30s" style="padding: 6px 12px; font-size: 13px;">30s</button>
+            <button class="status-range-btn toggle-btn" data-range="1m" style="padding: 6px 12px; font-size: 13px;">1m</button>
+            <button class="status-range-btn toggle-btn" data-range="15m" style="padding: 6px 12px; font-size: 13px;">15m</button>
+            <button class="status-range-btn toggle-btn" data-range="1h" style="padding: 6px 12px; font-size: 13px;">1h</button>
+            <button class="status-range-btn toggle-btn" data-range="1d" style="padding: 6px 12px; font-size: 13px;">1d</button>
+            <button class="status-range-btn toggle-btn" data-range="1w" style="padding: 6px 12px; font-size: 13px;">1w</button>
+            <button class="status-range-btn toggle-btn" data-range="1mo" style="padding: 6px 12px; font-size: 13px;">1mo</button>
           </div>
-          <input id="status-limit" type="number" value="48" min="5" max="500" class="search-field"
-            style="width:70px; height:34px; font-size:13px; padding:0 8px;">
-          <span id="status-limit-unit" style="color:var(--text-secondary); font-size:13px;">hours</span>
           <button id="scale-toggle" class="toggle-btn" onclick="toggleStatusScale()"
             style="height:34px; padding:0 12px; font-size:13px;">Log Scale</button>
         </div>
@@ -1267,21 +1314,6 @@
         <div id="status-scroll-inner" style="height: 370px; min-width: 100%; position: relative;">
           <div id="statusChartWrapper" class="chart-wrapper" style="height: 350px; position: relative;">
             <div class="chart-loader"></div>
-            <div class="skeleton-chart-placeholder"
-              style="position: absolute; inset: 0; display: none; flex-direction: column; justify-content: flex-end; padding: 20px; gap: 15px; z-index: 5;">
-              <div style="display: flex; align-items: flex-end; height: 100%; gap: 10px; width: 100%;">
-                <div class="skeleton-line" style="height: 50%; width: 8%;"></div>
-                <div class="skeleton-line" style="height: 30%; width: 8%;"></div>
-                <div class="skeleton-line" style="height: 75%; width: 8%;"></div>
-                <div class="skeleton-line" style="height: 40%; width: 8%;"></div>
-                <div class="skeleton-line" style="height: 60%; width: 8%;"></div>
-                <div class="skeleton-line" style="height: 85%; width: 8%;"></div>
-                <div class="skeleton-line" style="height: 45%; width: 8%;"></div>
-                <div class="skeleton-line" style="height: 90%; width: 8%;"></div>
-                <div class="skeleton-line" style="height: 55%; width: 8%;"></div>
-                <div class="skeleton-line" style="height: 70%; width: 8%;"></div>
-              </div>
-            </div>
             <canvas id="statusChart" style="height: 350px;"></canvas>
           </div>
         </div>
@@ -1515,12 +1547,15 @@
 
     // Global references
     let trafficChart;
+    let trafficVolumeChart;
     let statusChart;
     let ipChart;
     let countriesChart;
     let useTrafficLogScale = false;
     let useStatusLogScale = false;
     let useIpLogScale = false;
+    let activeTrafficRange = "30s";
+    let activeStatusRange = "30s";
 
     // Client-side cache for Top IPs to prevent re-fetching on scale toggle
     let cachedTopIpsData = null;
@@ -1599,6 +1634,15 @@
       document.getElementById("health-score").innerHTML = `<span class="skeleton-line" style="display:inline-block; width:90px; height:36px; margin:4px 0;"></span>`;
     }
 
+    function summaryNeedsSkeleton() {
+      return ["total-requests", "unique-ips", "error-rate", "health-score"].some(id => {
+        const el = document.getElementById(id);
+        if (!el) return true;
+        const text = el.textContent.trim();
+        return !text || text === "..." || text === "ERR" || el.querySelector(".skeleton-line");
+      });
+    }
+
     function showAnomaliesSkeleton() {
       const rateSpikesSkeleton = `
         <tr>
@@ -1659,6 +1703,7 @@
       "YYYY-MM-DD HH:mm:ss",
       "YYYY-MM-DD HH:mm",
     ];
+    const VIETNAM_UTC_OFFSET_MINUTES = 7 * 60;
 
     // Glow Plugin for Chart.js
     const glowPlugin = {
@@ -1679,12 +1724,36 @@
     function formatPeriod(value) {
       if (!value) return "";
       const rawValue = String(value);
-      const parseValue = /^\d{4}-\d{2}-\d{2}T\d{2}$/.test(rawValue) ? `${rawValue}:00` : rawValue;
-      const parsed = dayjs(parseValue);
-      if (!parsed.isValid()) return rawValue.replace("T", " ");
-      if (/^\d{4}-\d{2}-\d{2}$/.test(rawValue)) return parsed.format("DD/MM/YYYY");
-      if (/^\d{4}-\d{2}-\d{2}T\d{2}$/.test(rawValue)) return parsed.format("DD/MM/YYYY HH:00");
-      return parsed.format("DD/MM/YYYY HH:mm");
+      const isMonth = /^\d{4}-\d{2}$/.test(rawValue);
+      const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(rawValue);
+      const isHour = /^\d{4}-\d{2}-\d{2}T\d{2}$/.test(rawValue);
+      const isSecond = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(rawValue);
+      const isMinute = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(rawValue);
+      if (isMonth) {
+        const [year, month] = rawValue.split("-");
+        return `${month}/${year}`;
+      }
+      if (isDateOnly || isHour || isMinute || isSecond) {
+        const [datePart, timePart = "00:00:00"] = rawValue.split("T");
+        const [year, month, day] = datePart.split("-").map(Number);
+        const [hour = 0, minute = 0, second = 0] = timePart.split(":").map(Number);
+        const vietnamDate = new Date(Date.UTC(year, month - 1, day, hour, minute, second) + VIETNAM_UTC_OFFSET_MINUTES * 60 * 1000);
+        const pad = number => String(number).padStart(2, "0");
+        const dd = pad(vietnamDate.getUTCDate());
+        const mm = pad(vietnamDate.getUTCMonth() + 1);
+        const yyyy = vietnamDate.getUTCFullYear();
+        const hh = pad(vietnamDate.getUTCHours());
+        const mi = pad(vietnamDate.getUTCMinutes());
+        const ss = pad(vietnamDate.getUTCSeconds());
+
+        if (isDateOnly) return `${dd}/${mm}/${yyyy}`;
+        if (isHour) return `${dd}/${mm}/${yyyy} ${hh}:00`;
+        if (isSecond) return `${hh}:${mi}:${ss}`;
+        return `${dd}/${mm}/${yyyy} ${hh}:${mi}`;
+      }
+
+      const parsed = dayjs(rawValue);
+      return parsed.isValid() ? parsed.format("DD/MM/YYYY HH:mm") : rawValue.replace("T", " ");
     }
 
     function formatDateTime(value) {
@@ -1695,6 +1764,25 @@
     function setToggleState(id, active) {
       const el = document.getElementById(id);
       if (el) el.classList.toggle("active", active);
+    }
+
+    function isScrolledToLatest(outerEl) {
+      if (!outerEl) return true;
+      const maxScrollLeft = Math.max(outerEl.scrollWidth - outerEl.clientWidth, 0);
+      return maxScrollLeft <= 0 || maxScrollLeft - outerEl.scrollLeft <= 24;
+    }
+
+    function shouldPinChartToLatest(outerEl) {
+      return !outerEl || outerEl.dataset.hasRendered !== "1" || isScrolledToLatest(outerEl);
+    }
+
+    function finishChartScrollUpdate(outerEl, shouldPinLatest) {
+      if (!outerEl) return;
+      outerEl.dataset.hasRendered = "1";
+      if (!shouldPinLatest) return;
+      requestAnimationFrame(() => {
+        outerEl.scrollLeft = Math.max(outerEl.scrollWidth - outerEl.clientWidth, 0);
+      });
     }
 
     function escapeHtml(value) {
@@ -1728,11 +1816,11 @@
       const flag = getFlagEmoji(countryCode);
       const countryStr = countryName && countryName !== 'Unknown' ? countryName : '';
       const ispStr = isp && isp !== 'Unknown' && isp !== 'Loading...' ? ` (${isp})` : '';
-      
+
       if (!countryStr && !ispStr) {
         return `<span style="color: var(--text-secondary);">Unknown</span>`;
       }
-      
+
       const flagSpace = flag ? flag + ' ' : '';
       return `<span style="font-size: 13px;">${flagSpace}${escapeHtml(countryStr)}${escapeHtml(ispStr)}</span>`;
     }
@@ -1768,7 +1856,7 @@
     }
 
     async function fetchJson(path, options = {}) {
-      const res = await fetch(`${API}${path}`, options);
+      const res = await fetch(`${API}${path}`, { cache: "no-store", ...options });
       let payload = null;
       try {
         payload = await res.json();
@@ -1779,6 +1867,26 @@
         throw new Error(payload?.detail || `API Request failed with status ${res.status}`);
       }
       return payload;
+    }
+
+    function clearRealtimeLocalCaches() {
+      const exactKeys = [
+        "cache_summary",
+        "cache_anomalies",
+        "cache_dashboard",
+        "cache_top_ips",
+        "cache_top_countries",
+        "cache_top_isps",
+        "cache_right_stats",
+      ];
+      exactKeys.forEach(key => localStorage.removeItem(key));
+      for (let i = localStorage.length - 1; i >= 0; i -= 1) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+        if (key.startsWith("cache_traffic_") || key.startsWith("cache_status_codes_")) {
+          localStorage.removeItem(key);
+        }
+      }
     }
 
     function renderPanelError(id, message, retryFn = '') {
@@ -1862,7 +1970,7 @@
 
     // Handle Log scales correctly
     function compressedData(values, ticks) {
-      return values.map(value => compressedValue(value, ticks));
+      return values.map(value => value === null || value === undefined ? null : compressedValue(value, ticks));
     }
 
     function compressedAxisOptions(ticks) {
@@ -1883,6 +1991,28 @@
 
     // Number animation function
     function animateValue(obj, start, end, duration, formatStr = "") {
+      // Parse current value from text to start animation from it instead of 0
+      const currentText = obj.textContent || "";
+      let currentVal = parseFloat(currentText.replace(/[^\d.]/g, ""));
+      if (isNaN(currentVal)) {
+        currentVal = 0;
+      }
+
+      if (start === 0 && currentVal > 0) {
+        start = currentVal;
+      }
+
+      if (start === end) {
+        if (formatStr === "%") {
+          obj.innerHTML = end.toFixed(2) + "%";
+        } else if (formatStr === "health") {
+          obj.innerHTML = Math.round(end) + "%";
+        } else {
+          obj.innerHTML = Math.floor(end).toLocaleString();
+        }
+        return;
+      }
+
       let startTimestamp = null;
       const step = (timestamp) => {
         if (!startTimestamp) startTimestamp = timestamp;
@@ -1938,7 +2068,7 @@
       if (activeControllers['summary']) activeControllers['summary'].abort();
       activeControllers['summary'] = controller;
       setReloadSpinner('summary', true);
-      showSummarySkeleton();
+      if (summaryNeedsSkeleton()) showSummarySkeleton();
       try {
         const data = await fetchJson("/stats/summary", { signal: controller.signal });
         populateSummary(data);
@@ -1972,10 +2102,11 @@
       const elError = document.getElementById("error-rate");
       const elHealth = document.getElementById("health-score");
 
-      animateValue(elTotal, 0, totalReq, 2000);
-      animateValue(elIps, 0, data.unique_ips || 0, 2000);
-      animateValue(elError, 0, errRate, 2000, "%");
-      animateValue(elHealth, 0, health, 2000, "health");
+      const animationMs = summaryNeedsSkeleton() ? 600 : 350;
+      animateValue(elTotal, 0, totalReq, animationMs);
+      animateValue(elIps, 0, data.unique_ips || 0, animationMs);
+      animateValue(elError, 0, errRate, animationMs, "%");
+      animateValue(elHealth, 0, health, animationMs, "health");
 
       // Set error rate state coloring
       if (errRate >= 5) {
@@ -2164,15 +2295,15 @@
       activeControllers['traffic'] = controller;
       const signal = controller.signal;
 
-      const limit = 48;
-      const key = `cache_traffic_${ip}`;
+      const range = activeTrafficRange || "30s";
+      const key = `cache_traffic_${range}`;
 
       if (!force) {
         const cached = getLocalCache(key);
         if (cached) {
           populateTrafficData(cached.data);
           if (cached.stale) {
-            fetchJson(`/stats/traffic?granularity=hour&limit=${limit}&offset=0&ip=${encodeURIComponent(ip)}`, { signal })
+            fetchJson(`/stats/traffic-series?range=${encodeURIComponent(range)}`, { signal })
               .then(data => {
                 populateTrafficData(data);
                 saveLocalCache(key, data);
@@ -2195,7 +2326,7 @@
       setReloadSpinner('traffic', true);
 
       try {
-        const data = await fetchJson(`/stats/traffic?granularity=hour&limit=${limit}&offset=0&ip=${encodeURIComponent(ip)}`, { signal });
+        const data = await fetchJson(`/stats/traffic-series?range=${encodeURIComponent(range)}`, { signal });
         populateTrafficData(data);
         saveLocalCache(key, data);
       } catch (error) {
@@ -2215,22 +2346,38 @@
     }
 
     function populateTrafficData(data) {
-      const chunkLabels = data.map(d => formatPeriod(d.period));
-      const chunkCounts = data.map(d => Number(d.count) || 0);
+      const normalized = Array.isArray(data)
+        ? {
+            labels: data.map(d => d.period),
+            counts: data.map(d => Number(d.count) || 0),
+            volume: data.map(d => Number(d.count) || 0),
+            ma: { ma7: [], ma25: [], ma99: [] }
+          }
+        : data;
+      const chunkLabels = (normalized.labels || []).map(d => formatPeriod(d));
+      const chunkCounts = (normalized.counts || []).map(d => Number(d) || 0);
+      const volumeCounts = (normalized.volume || chunkCounts).map(d => Number(d) || 0);
+      const maData = normalized.ma || {};
 
-      const MIN_PX_PER_POINT = 60;
+      const MIN_PX_PER_POINT = activeTrafficRange === "30s" || activeTrafficRange === "1m" ? 24 : 42;
       const outerEl = document.getElementById('traffic-scroll-outer');
       const innerEl = document.getElementById('traffic-scroll-inner');
       const canvasEl = document.getElementById('trafficChart');
+      const volumeCanvasEl = document.getElementById('trafficVolumeChart');
       const outerWidth = outerEl ? outerEl.offsetWidth : 800;
       const canvasWidth = Math.max(chunkLabels.length * MIN_PX_PER_POINT, outerWidth);
+      const shouldPinLatest = shouldPinChartToLatest(outerEl);
       if (innerEl) innerEl.style.width = canvasWidth + 'px';
 
       if (!trafficChart) {
         canvasEl.width = canvasWidth;
-        canvasEl.height = 350;
+        canvasEl.height = 300;
         canvasEl.style.width = canvasWidth + 'px';
-        canvasEl.style.height = '350px';
+        canvasEl.style.height = '300px';
+        volumeCanvasEl.width = canvasWidth;
+        volumeCanvasEl.height = 100;
+        volumeCanvasEl.style.width = canvasWidth + 'px';
+        volumeCanvasEl.style.height = '100px';
 
         const ctx = canvasEl.getContext("2d");
         const gradient = ctx.createLinearGradient(0, 0, 0, 300);
@@ -2247,6 +2394,18 @@
               tension: 0.4, pointRadius: 0, pointHoverRadius: 6,
               pointHoverBackgroundColor: "#38bdf8", pointHoverBorderColor: "#fff",
               pointHoverBorderWidth: 2, borderWidth: 3,
+            }, {
+              label: "MA(7)", originalData: [], data: [],
+              borderColor: "#facc15", backgroundColor: "transparent", fill: false,
+              tension: 0.35, pointRadius: 0, borderWidth: 1.5, spanGaps: true,
+            }, {
+              label: "MA(25)", originalData: [], data: [],
+              borderColor: "#ec4899", backgroundColor: "transparent", fill: false,
+              tension: 0.35, pointRadius: 0, borderWidth: 1.5, spanGaps: true,
+            }, {
+              label: "MA(99)", originalData: [], data: [],
+              borderColor: "#a78bfa", backgroundColor: "transparent", fill: false,
+              tension: 0.35, pointRadius: 0, borderWidth: 1.5, spanGaps: true,
             }]
           },
           options: {
@@ -2254,11 +2413,14 @@
             maintainAspectRatio: false,
             interaction: { mode: "index", intersect: false },
             plugins: {
-              legend: { display: false },
+              legend: {
+                display: true,
+                labels: { color: "#9ca3af", boxWidth: 10, usePointStyle: true, pointStyle: "line" }
+              },
               tooltip: {
                 backgroundColor: '#0f172a', titleColor: '#e2e8f0', bodyColor: '#38bdf8',
                 borderColor: 'rgba(255, 255, 255, 0.1)', borderWidth: 1,
-                callbacks: { label: ctx => ` Requests: ${ctx.dataset.originalData?.[ctx.dataIndex] ?? ctx.parsed.y}` }
+                callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.dataset.originalData?.[ctx.dataIndex] ?? ctx.parsed.y}` }
               }
             },
             scales: {
@@ -2267,44 +2429,84 @@
             }
           }
         });
+
+        trafficVolumeChart = new Chart(volumeCanvasEl.getContext("2d"), {
+          type: "bar",
+          data: { labels: [], datasets: [{ label: "Volume", data: [], backgroundColor: [] }] },
+          options: {
+            responsive: false,
+            maintainAspectRatio: false,
+            interaction: { mode: "index", intersect: false },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: '#0f172a',
+                titleColor: '#e2e8f0',
+                bodyColor: '#9ca3af',
+                borderColor: 'rgba(255, 255, 255, 0.1)',
+                borderWidth: 1,
+                callbacks: { label: ctx => ` Volume: ${Number(ctx.parsed.y || 0).toLocaleString()} requests` }
+              }
+            },
+            scales: {
+              x: { ticks: { color: "#64748b", maxRotation: 0, autoSkip: true, autoSkipPadding: 24 }, grid: { display: false } },
+              y: { beginAtZero: true, ticks: { display: false }, grid: { color: 'rgba(255,255,255,0.025)' } }
+            }
+          }
+        });
       } else {
-        trafficChart.resize(canvasWidth, 350);
+        trafficChart.resize(canvasWidth, 300);
+        if (trafficVolumeChart) trafficVolumeChart.resize(canvasWidth, 100);
       }
 
       trafficChart.data.labels = chunkLabels;
       trafficChart.data.datasets[0].originalData = chunkCounts;
+      trafficChart.data.datasets[1].originalData = maData.ma7 || [];
+      trafficChart.data.datasets[2].originalData = maData.ma25 || [];
+      trafficChart.data.datasets[3].originalData = maData.ma99 || [];
 
       const compressedTicks = buildCompressedTicks(Math.max(...chunkCounts, 1));
       const newScaledData = useTrafficLogScale ? compressedData(chunkCounts, compressedTicks) : chunkCounts;
 
       trafficChart.data.datasets[0].data = newScaledData;
+      trafficChart.data.datasets[1].data = useTrafficLogScale ? compressedData(maData.ma7 || [], compressedTicks) : (maData.ma7 || []);
+      trafficChart.data.datasets[2].data = useTrafficLogScale ? compressedData(maData.ma25 || [], compressedTicks) : (maData.ma25 || []);
+      trafficChart.data.datasets[3].data = useTrafficLogScale ? compressedData(maData.ma99 || [], compressedTicks) : (maData.ma99 || []);
       trafficChart.options.scales.y = useTrafficLogScale ? compressedAxisOptions(compressedTicks) : { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } };
       trafficChart.update('none');
+
+      if (trafficVolumeChart) {
+        trafficVolumeChart.data.labels = chunkLabels;
+        trafficVolumeChart.data.datasets[0].data = volumeCounts;
+        trafficVolumeChart.data.datasets[0].backgroundColor = volumeCounts.map((value, index) =>
+          index === 0 || value >= volumeCounts[index - 1] ? "rgba(45, 212, 191, 0.8)" : "rgba(248, 113, 113, 0.8)"
+        );
+        trafficVolumeChart.update('none');
+      }
+      finishChartScrollUpdate(outerEl, shouldPinLatest);
     }
 
     function toggleTrafficScale() {
       useTrafficLogScale = !useTrafficLogScale;
       setToggleState("traffic-scale-toggle", useTrafficLogScale);
-      loadTraffic(document.getElementById("traffic-ip-search").value.trim());
+      loadTraffic("", true);
     }
 
-    async function loadStatusCodes(range = "hour", force = false) {
+    async function loadStatusCodes(range = activeStatusRange || "30s", force = false) {
       const controller = new AbortController();
       if (activeControllers['status_codes']) activeControllers['status_codes'].abort();
       activeControllers['status_codes'] = controller;
       const signal = controller.signal;
 
-      const limit = numberInputValue("status-limit", 48, 5, 500);
-      document.getElementById("status-limit-unit").textContent = range === "minute" ? "minutes" : range === "day" ? "days" : "hours";
-
-      const key = `cache_status_codes_${range}_${limit}`;
+      activeStatusRange = range || "30s";
+      const key = `cache_status_codes_${activeStatusRange}`;
 
       if (!force) {
         const cached = getLocalCache(key);
         if (cached) {
           populateStatusCodesData(cached.data);
           if (cached.stale) {
-            fetchJson(`/stats/status-codes-over-time?granularity=${range}&limit=${limit}&offset=0`, { signal })
+            fetchJson(`/stats/status-codes-series?range=${encodeURIComponent(activeStatusRange)}`, { signal })
               .then(data => {
                 populateStatusCodesData(data);
                 saveLocalCache(key, data);
@@ -2327,12 +2529,12 @@
       setReloadSpinner('status_codes', true);
 
       try {
-        const data = await fetchJson(`/stats/status-codes-over-time?granularity=${range}&limit=${limit}&offset=0`, { signal });
+        const data = await fetchJson(`/stats/status-codes-series?range=${encodeURIComponent(activeStatusRange)}`, { signal });
         populateStatusCodesData(data);
         saveLocalCache(key, data);
       } catch (error) {
         if (error.name !== 'AbortError') {
-          renderPanelError("statusChartWrapper", error.message, `loadStatusCodes('${range}', true)`);
+          renderPanelError("statusChartWrapper", error.message, `loadStatusCodes('${activeStatusRange}', true)`);
         } else {
           const cached = getLocalCache(key);
           if (cached) populateStatusCodesData(cached.data);
@@ -2367,6 +2569,7 @@
       const canvasEl = document.getElementById('statusChart');
       const outerWidth = outerEl ? outerEl.offsetWidth : 800;
       const canvasWidth = Math.max(chunkLabels.length * MIN_PX_PER_POINT, outerWidth);
+      const shouldPinLatest = shouldPinChartToLatest(outerEl);
       if (innerEl) innerEl.style.width = canvasWidth + 'px';
 
       if (!statusChart) {
@@ -2418,13 +2621,13 @@
       statusChart.update('none');
 
       renderStatusLegend(data.datasets, colors);
+      finishChartScrollUpdate(outerEl, shouldPinLatest);
     }
 
     function toggleStatusScale() {
       useStatusLogScale = !useStatusLogScale;
       setToggleState("scale-toggle", useStatusLogScale);
-      const activeBtn = document.querySelector(".range-btn.active");
-      loadStatusCodes(activeBtn ? activeBtn.dataset.range : "hour");
+      loadStatusCodes(activeStatusRange, true);
     }
 
     async function loadTopIPs(force = false, silent = false) {
@@ -2649,25 +2852,30 @@
       if (container) container.classList.remove("loading");
 
       // Cache the raw data for drill down
+      const keepDrillDown = isCountriesDrilledDown;
       cachedCountriesData = data;
+      if (keepDrillDown) {
+        showCountriesDrillDown();
+        return;
+      }
       isCountriesDrilledDown = false;
 
       // Group countries to ensure "minimum slices"
       const totalCount = data.reduce((sum, d) => sum + d.count, 0) || 1;
-      
+
       let mergedData = [];
       let othersCount = 0;
-      
+
       // Sort in descending order
       const sortedData = [...data].sort((a, b) => b.count - a.count);
-      
+
       // Separate normal countries from existing Others/Unknown
       const countriesOnly = sortedData.filter(d => d.country !== 'Others' && d.country !== 'Unknown');
       const specialGroups = sortedData.filter(d => d.country === 'Others' || d.country === 'Unknown');
-      
+
       // Initial count for Others includes existing Others/Unknown
       specialGroups.forEach(d => othersCount += d.count);
-      
+
       // Group countries that have < 5% of total requests, or beyond the top 4
       countriesOnly.forEach((d, index) => {
         const pct = (d.count / totalCount) * 100;
@@ -2677,7 +2885,7 @@
           othersCount += d.count;
         }
       });
-      
+
       // Fallback: If we ended up with no slices at all (every country is < 5%),
       // let's just display the top 3 countries regardless of their percentage.
       if (mergedData.length === 0 && countriesOnly.length > 0) {
@@ -2692,7 +2900,7 @@
         });
         specialGroups.forEach(d => othersCount += d.count);
       }
-      
+
       if (othersCount > 0) {
         mergedData.push({ country: 'Others', count: othersCount });
       }
@@ -2703,7 +2911,7 @@
       if (othersSlice) {
         finalSlices.push(othersSlice);
       }
-      
+
       renderCountriesChart(finalSlices, totalCount);
     }
 
@@ -2736,13 +2944,20 @@
         return palette[idx % palette.length];
       });
 
-      if (countriesChart) {
-        countriesChart.destroy();
-      }
-
       const canvas = document.getElementById("countriesChart");
       if (!canvas) return;
       const ctx = canvas.getContext("2d");
+
+      if (countriesChart) {
+        countriesChart.data.labels = labels;
+        countriesChart.data.datasets[0].data = renderData;
+        countriesChart.data.datasets[0].actualPercentages = percentages;
+        countriesChart.data.datasets[0].originalData = counts;
+        countriesChart.data.datasets[0].backgroundColor = colors;
+        countriesChart.update();
+        return;
+      }
+
       countriesChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
@@ -2833,7 +3048,7 @@
     function showCountriesDrillDown() {
       if (!cachedCountriesData) return;
       isCountriesDrilledDown = true;
-      
+
       // Update Title with Back button
       const titleContainer = document.getElementById("countries-title-container");
       if (titleContainer) {
@@ -2848,12 +3063,12 @@
           <span style="color: var(--text-primary); font-size: 14px;">Others Breakdown</span>
         `;
       }
-      
+
       const totalCount = cachedCountriesData.reduce((sum, d) => sum + d.count, 0) || 1;
       const sortedData = [...cachedCountriesData].sort((a, b) => b.count - a.count);
       const countriesOnly = sortedData.filter(d => d.country !== 'Others' && d.country !== 'Unknown');
       const specialGroups = sortedData.filter(d => d.country === 'Others' || d.country === 'Unknown');
-      
+
       let topCountries = [];
       countriesOnly.forEach((d, index) => {
         const pct = (d.count / totalCount) * 100;
@@ -2861,7 +3076,7 @@
           topCountries.push(d.country);
         }
       });
-      
+
       if (topCountries.length === 0 && countriesOnly.length > 0) {
         countriesOnly.forEach((d, index) => {
           if (index < 3) {
@@ -2869,14 +3084,14 @@
           }
         });
       }
-      
+
       // All items NOT in topCountries belong to the Others drilldown
       const drillDownData = sortedData.filter(d => !topCountries.includes(d.country));
       const totalDdCount = drillDownData.reduce((sum, d) => sum + d.count, 0) || 1;
-      
+
       let finalDrillDown = [];
       let ddOthersCount = 0;
-      
+
       drillDownData.forEach(d => {
         const pct = (d.count / totalDdCount) * 100;
         if (pct >= 0.005 && d.country !== 'Others' && d.country !== 'Unknown') {
@@ -2885,23 +3100,23 @@
           ddOthersCount += d.count;
         }
       });
-      
+
       if (ddOthersCount > 0) {
         finalDrillDown.push({ country: 'Others', count: ddOthersCount });
       }
-      
+
       renderCountriesChart(finalDrillDown, totalDdCount);
     }
 
     function backFromCountriesDrillDown() {
       isCountriesDrilledDown = false;
-      
+
       // Restore title
       const titleContainer = document.getElementById("countries-title-container");
       if (titleContainer) {
         titleContainer.innerHTML = `<span id="countries-title-text">Top Countries</span>`;
       }
-      
+
       // Re-populate using original data
       if (cachedCountriesData) {
         populateTopCountries(cachedCountriesData);
@@ -2921,7 +3136,7 @@
       }
 
       const totalCount = data.reduce((sum, item) => sum + item.count, 0) || 1;
-      
+
       listContainer.innerHTML = data.map((item, index) => {
         const percentage = Math.round((item.count / totalCount) * 100);
         const gradientColor = index === 0 ? 'linear-gradient(90deg, #38bdf8, #818cf8)' :
@@ -2932,7 +3147,7 @@
                                index === 1 ? 'color: #818cf8; font-weight: 700;' :
                                index === 2 ? 'color: #34d399; font-weight: 700;' :
                                'color: var(--text-secondary);';
-        
+
         const rankNum = index + 1;
         const ispName = item.isp || "Unknown";
 
@@ -2964,14 +3179,24 @@
       const compressedTicks = buildCompressedTicks(Math.max(...counts, 1));
       const chartData = useIpLogScale ? compressedData(counts, compressedTicks) : counts;
 
-      if (ipChart) {
-        ipChart.destroy();
-      }
-
       const ctx = document.getElementById("ipChart").getContext("2d");
       const gradient = ctx.createLinearGradient(0, 0, 300, 0);
       gradient.addColorStop(0, '#38bdf8');
       gradient.addColorStop(1, '#818cf8');
+
+      if (ipChart) {
+        ipChart.$rawData = data;
+        ipChart.data.labels = labels;
+        ipChart.data.datasets[0].originalData = counts;
+        ipChart.data.datasets[0].data = chartData;
+        ipChart.data.datasets[0].backgroundColor = gradient;
+        ipChart.options.scales.x = useIpLogScale
+          ? compressedAxisOptions(compressedTicks)
+          : { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.03)' } };
+        ipChart.update();
+        if (typeof startIPResolvePolling === 'function') startIPResolvePolling();
+        return;
+      }
 
       ipChart = new Chart(ctx, {
         type: "bar",
@@ -2998,12 +3223,12 @@
               borderWidth: 1,
               callbacks: {
                 title: items => {
-                  const item = data[items[0]?.dataIndex] || {};
+                  const item = items[0]?.chart?.$rawData?.[items[0]?.dataIndex] || {};
                   return item.ip || '';
                 },
                 label: ctx => ` Requests: ${ctx.dataset.originalData?.[ctx.dataIndex] ?? ctx.parsed.x}`,
                 afterLabel: ctx => {
-                  const item = data[ctx.dataIndex] || {};
+                  const item = ctx.chart.$rawData?.[ctx.dataIndex] || {};
                   return ` ${formatLocationAndIspText(item.country_code, item.country_name, item.isp)}`;
                 }
               }
@@ -3020,6 +3245,7 @@
           }
         }
       });
+      ipChart.$rawData = data;
       if (typeof startIPResolvePolling === 'function') startIPResolvePolling();
     }
 
@@ -3193,10 +3419,10 @@
       html += `
         <div style="display: inline-flex; align-items: center; gap: 6px; margin-left: 15px; border-left: 1px solid var(--border-color); padding-left: 15px;">
           <span style="color:var(--text-secondary); font-size: 13px;">Jump to:</span>
-          <input id="jump-page-input" type="number" min="1" max="${totalPages}" value="${currentPage + 1}" 
+          <input id="jump-page-input" type="number" min="1" max="${totalPages}" value="${currentPage + 1}"
             style="width: 55px; height: 28px; background: var(--card-bg); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 6px; padding: 0 4px; text-align: center; font-size: 13px;"
             onkeydown="if(event.key === 'Enter') { const p = parseInt(this.value)-1; if(p>=0 && p<${totalPages}) jumpToPage(p, ${pageSize}); }">
-          <button onclick="const p = parseInt(document.getElementById('jump-page-input').value)-1; if(p>=0 && p<${totalPages}) jumpToPage(p, ${pageSize});" 
+          <button onclick="const p = parseInt(document.getElementById('jump-page-input').value)-1; if(p>=0 && p<${totalPages}) jumpToPage(p, ${pageSize});"
             class="btn-secondary" style="padding: 4px 8px; font-size: 12px; border-radius: 6px; height: 28px; display: flex; align-items: center;">Go</button>
         </div>
       `;
@@ -3450,7 +3676,7 @@
         const fromDate = now.subtract(value, unit);
         fromVal = fromDate.format("YYYY-MM-DDTHH:mm:ss");
         toVal = now.format("YYYY-MM-DDTHH:mm:ss");
-        
+
         if (unit === 'minute') label = `Last ${value}m`;
         else if (unit === 'hour') label = `Last ${value}h`;
         else if (unit === 'day') label = `Last ${value}d`;
@@ -3483,7 +3709,7 @@
     function applyCustomDateRange() {
       const fromVal = document.getElementById("search-from").value;
       const toVal = document.getElementById("search-to").value;
-      
+
       let label = "Custom Range";
       if (fromVal || toVal) {
         const startText = fromVal ? dayjs(fromVal, "DD/MM/YYYY HH:mm:ss").format("DD/MM/YYYY HH:mm:ss") : "...";
@@ -3533,7 +3759,7 @@
           el.value = "";
         }
         if (id === 'search-status') el.selectedIndex = 0;
-        
+
         if (id === 'search-from' || id === 'search-to') {
           const fromVal = document.getElementById("search-from")?.value;
           const toVal = document.getElementById("search-to")?.value;
@@ -3586,33 +3812,6 @@
         return;
       }
 
-      const key = "cache_system_logs";
-      if (!force) {
-        const cached = getLocalCache(key);
-        if (cached) {
-          populateSystemLogs(cached.data);
-          if (cached.stale) {
-            const controller = new AbortController();
-            if (activeControllers['system_logs']) activeControllers['system_logs'].abort();
-            activeControllers['system_logs'] = controller;
-            fetchJson("/stats/logs", { signal: controller.signal })
-              .then(data => {
-                populateSystemLogs(data);
-                saveLocalCache(key, data);
-              })
-              .catch(err => {
-                if (err.name !== 'AbortError') console.error("System logs background refresh failed", err);
-              })
-              .finally(() => {
-                if (activeControllers['system_logs'] === controller) {
-                  delete activeControllers['system_logs'];
-                }
-              });
-          }
-          return;
-        }
-      }
-
       const controller = new AbortController();
       if (activeControllers['system_logs']) activeControllers['system_logs'].abort();
       activeControllers['system_logs'] = controller;
@@ -3621,13 +3820,9 @@
       try {
         const data = await fetchJson("/stats/logs", { signal: controller.signal });
         populateSystemLogs(data);
-        saveLocalCache(key, data);
       } catch (error) {
         if (error.name !== 'AbortError') {
           renderPanelError("system-logs", error.message, "loadSystemLogs(true)");
-        } else {
-          const cached = getLocalCache(key);
-          if (cached) populateSystemLogs(cached.data);
         }
       } finally {
         if (activeControllers['system_logs'] === controller) {
@@ -3670,12 +3865,9 @@
         } else if (panelName === 'anomalies') {
           localStorage.removeItem("cache_anomalies");
         } else if (panelName === 'traffic') {
-          const ip = document.getElementById("traffic-ip-search").value.trim();
-          localStorage.removeItem(`cache_traffic_${ip}`);
+          localStorage.removeItem(`cache_traffic_${activeTrafficRange}`);
         } else if (panelName === 'status_codes') {
-          const range = document.querySelector(".range-btn.active").dataset.range;
-          const limit = numberInputValue("status-limit", 48, 5, 500);
-          localStorage.removeItem(`cache_status_codes_${range}_${limit}`);
+          localStorage.removeItem(`cache_status_codes_${activeStatusRange}`);
         } else if (panelName === 'top_ips') {
           localStorage.removeItem("cache_top_ips");
         } else if (panelName === 'top_countries') {
@@ -3696,24 +3888,28 @@
     }
 
     // Set up listeners
-    document.querySelectorAll(".range-btn").forEach(btn => {
+    document.querySelectorAll(".traffic-range-btn").forEach(btn => {
       btn.addEventListener("click", () => {
-        document.querySelectorAll(".range-btn").forEach(b => b.classList.remove("active"));
+        document.querySelectorAll(".traffic-range-btn").forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
-        loadStatusCodes(btn.dataset.range);
+        activeTrafficRange = btn.dataset.range || "30s";
+        const trafficOuter = document.getElementById("traffic-scroll-outer");
+        if (trafficOuter) delete trafficOuter.dataset.hasRendered;
+        localStorage.removeItem(`cache_traffic_${activeTrafficRange}`);
+        loadTraffic("", true);
       });
     });
 
-    document.getElementById("traffic-ip-search").addEventListener("input", function () {
-      const ip = this.value.trim();
-      if (ip === "" || /^\d{1,3}(\.\d{1,3}){0,3}$/.test(ip)) {
-        loadTraffic(ip);
-      }
-    });
-
-    document.getElementById("status-limit").addEventListener("change", () => {
-      const activeBtn = document.querySelector(".range-btn.active");
-      loadStatusCodes(activeBtn ? activeBtn.dataset.range : "hour");
+    document.querySelectorAll(".status-range-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".status-range-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        activeStatusRange = btn.dataset.range || "30s";
+        const statusOuter = document.getElementById("status-scroll-outer");
+        if (statusOuter) delete statusOuter.dataset.hasRendered;
+        localStorage.removeItem(`cache_status_codes_${activeStatusRange}`);
+        loadStatusCodes(activeStatusRange, true);
+      });
     });
 
     document.getElementById("search-page-size").addEventListener("change", () => {
@@ -3722,8 +3918,8 @@
 
     const PANELS = {
       summary: (force) => loadSummary(force),
-      traffic: (force) => loadTraffic(document.getElementById("traffic-ip-search").value.trim(), force),
-      status_codes: (force) => loadStatusCodes(document.querySelector(".range-btn.active")?.dataset?.range || "hour", force),
+      traffic: (force) => loadTraffic("", force),
+      status_codes: (force) => loadStatusCodes(activeStatusRange, force),
       anomalies: (force) => loadThreatAndAnomalies(force),
       top_ips: (force) => loadTopIPs(force),
       top_countries: (force) => loadTopCountries(force),
@@ -3753,12 +3949,12 @@
 
       if (data.traffic) {
         populateTrafficData(data.traffic);
-        saveLocalCache("cache_traffic_", data.traffic);
+        saveLocalCache(`cache_traffic_${activeTrafficRange}`, data.traffic);
       }
 
       if (data.status_over_time) {
         populateStatusCodesData(data.status_over_time);
-        saveLocalCache("cache_status_codes_hour_48", data.status_over_time);
+        saveLocalCache(`cache_status_codes_${activeStatusRange}`, data.status_over_time);
       }
 
       if (data.top_ips) {
@@ -3793,14 +3989,14 @@
       }
 
       try {
-        const data = await fetchJson("/stats/dashboard");
+        const data = await fetchJson("/stats/dashboard?include_expensive=true");
         populateDashboard(data);
         saveLocalCache("cache_dashboard", data);
         const missingLoads = [];
         if (!data.summary) missingLoads.push(loadSummary(true));
         if (!data.anomalies) missingLoads.push(loadThreatAndAnomalies(true));
-        if (!data.traffic) missingLoads.push(loadTraffic(document.getElementById("traffic-ip-search").value.trim(), true));
-        if (!data.status_over_time) missingLoads.push(loadStatusCodes(document.querySelector(".range-btn.active")?.dataset?.range || "hour", true));
+        if (!data.traffic) missingLoads.push(loadTraffic("", true));
+        if (!data.status_over_time) missingLoads.push(loadStatusCodes(activeStatusRange, true));
         if (!data.top_ips) missingLoads.push(loadTopIPs(true));
         if (!data.top_urls || !data.status_codes) missingLoads.push(loadRightStats(true));
         if (missingLoads.length) await Promise.allSettled(missingLoads);
@@ -3809,8 +4005,8 @@
         await Promise.allSettled([
           loadSummary(true),
           loadThreatAndAnomalies(true),
-          loadTraffic(document.getElementById("traffic-ip-search").value.trim(), true),
-          loadStatusCodes(document.querySelector(".range-btn.active")?.dataset?.range || "hour", true),
+          loadTraffic("", true),
+          loadStatusCodes(activeStatusRange, true),
           loadTopIPs(true),
           loadRightStats(true)
         ]);
@@ -3881,7 +4077,7 @@
 
     async function initDashboard() {
       showSkeletons();  // ← hiển thị ngay, không chờ fetch
-      
+
       // Initialize flatpickr on search date fields
       flatpickr("#search-from", {
         enableTime: true,
@@ -3905,6 +4101,318 @@
 
       startIPResolvePolling();
     }
+
+    function setLiveStatus(color, text) {
+      const statusDot = document.getElementById("ws-status-dot");
+      const statusText = document.getElementById("ws-status-text");
+      if (statusDot) statusDot.style.background = color;
+      if (statusText) statusText.innerText = text;
+    }
+
+    function replaceLiveFeed(logs) {
+      const tbody = document.getElementById("live-feed-results");
+      if (!tbody) return;
+
+      if (!logs || logs.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 20px;">
+              No live traffic yet.
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      const statusClassFor = status => {
+        const numericStatus = Number(status) || 0;
+        if (numericStatus >= 500) return "status-error";
+        if (numericStatus >= 400) return "status-warning";
+        if (numericStatus >= 300) return "status-redirect";
+        if (numericStatus >= 200) return "status-success";
+        return "status-info";
+      };
+
+      tbody.innerHTML = logs.slice(0, 6).map(log => {
+        const method = String(log.method || "");
+        const size = log.size === null || log.size === undefined ? "-" : Number(log.size).toLocaleString();
+        return `
+          <tr>
+            <td><span style="font-family: monospace; font-weight: 600;">${escapeHtml(log.ip)}</span></td>
+            <td style="color: var(--text-secondary); font-size: 12px;">${formatDateTime(log.time)}</td>
+            <td><span class="method-tag method-${escapeHtml(method.toLowerCase())}">${escapeHtml(method)}</span></td>
+            <td><span style="font-family: monospace; font-size: 13px; color: var(--text-primary); word-break: break-all;">${escapeHtml(log.path)}</span></td>
+            <td><span class="status-badge ${statusClassFor(log.status)}">${escapeHtml(log.status)}</span></td>
+            <td style="font-family: monospace; text-align: right; color: var(--text-secondary);">${size} B</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    let realtimePollInterval = null;
+    const REMOTE_REALTIME_POLL_MS = 10000;
+    const LOCAL_REALTIME_POLL_MS = 3000;
+    const RANKING_REFRESH_MS = 15000;
+    let lastRankingRefreshAt = 0;
+
+    function isLocalSimulationHost() {
+      const host = location.hostname;
+      return host === "localhost"
+        || host === "127.0.0.1"
+        || host === "::1"
+        || host === "0.0.0.0"
+        || host.startsWith("192.168.")
+        || host.startsWith("10.")
+        || /^172\.(1[6-9]|2\d|3[0-1])\./.test(host);
+    }
+
+    async function runLocalSimulationTick(stamp) {
+      if (!isLocalSimulationHost()) return null;
+      try {
+        return await fetchJson(`/simulation/tick?batch_size=10&spread_seconds=2&_=${stamp}`);
+      } catch (error) {
+        console.error("Local simulation tick failed", error);
+        return null;
+      }
+    }
+
+    async function refreshRealtimeDashboard() {
+      const trafficRange = activeTrafficRange || "30s";
+      const statusRange = activeStatusRange || "30s";
+      const stamp = Date.now();
+
+      const tickResult = await runLocalSimulationTick(stamp);
+      if (tickResult?.sample) {
+        updateLiveFeed(tickResult.sample);
+        updateLiveCounter(tickResult.sample);
+      }
+      clearRealtimeLocalCaches();
+
+      const [dashboardResult, latestLogsResult, trafficResult, statusResult] = await Promise.allSettled([
+        fetchJson(`/stats/dashboard?_=${stamp}`),
+        fetchJson(`/stats/search/keyset?limit=6&_=${stamp}`),
+        fetchJson(`/stats/traffic-series?range=${encodeURIComponent(trafficRange)}&_=${stamp}`),
+        fetchJson(`/stats/status-codes-series?range=${encodeURIComponent(statusRange)}&_=${stamp}`),
+      ]);
+
+      if (dashboardResult.status === "fulfilled") {
+        populateDashboard(dashboardResult.value);
+      } else {
+        console.error("Realtime dashboard refresh failed", dashboardResult.reason);
+      }
+
+      if (latestLogsResult.status === "fulfilled") {
+        replaceLiveFeed(latestLogsResult.value.rows || []);
+      } else {
+        console.error("Realtime live feed refresh failed", latestLogsResult.reason);
+      }
+
+      if (trafficResult.status === "fulfilled") {
+        populateTrafficData(trafficResult.value);
+        saveLocalCache(`cache_traffic_${trafficRange}`, trafficResult.value);
+      } else {
+        console.error("Realtime traffic refresh failed", trafficResult.reason);
+      }
+
+      if (statusResult.status === "fulfilled") {
+        populateStatusCodesData(statusResult.value);
+        saveLocalCache(`cache_status_codes_${statusRange}`, statusResult.value);
+      } else {
+        console.error("Realtime status refresh failed", statusResult.reason);
+      }
+
+      if (stamp - lastRankingRefreshAt >= RANKING_REFRESH_MS) {
+        lastRankingRefreshAt = stamp;
+        await Promise.allSettled([
+          loadTopIPs(true, true),
+          loadTopCountries(true, true),
+          loadTopISPs(true, true),
+        ]);
+      }
+
+      startIPResolvePolling();
+    }
+
+    function startRealtimePolling() {
+      if (realtimePollInterval) return;
+      const pollMs = isLocalSimulationHost() ? LOCAL_REALTIME_POLL_MS : REMOTE_REALTIME_POLL_MS;
+      const statusText = isLocalSimulationHost()
+        ? `Local tick + polling every ${Math.round(pollMs / 1000)}s`
+        : `Polling every ${Math.round(pollMs / 1000)}s`;
+      setLiveStatus("#10b981", statusText);
+      refreshRealtimeDashboard().catch(error => {
+        setLiveStatus("#f59e0b", "Polling retrying...");
+        console.error("Initial realtime polling refresh failed", error);
+      });
+      realtimePollInterval = setInterval(() => {
+        refreshRealtimeDashboard()
+          .then(() => setLiveStatus("#10b981", statusText))
+          .catch(error => {
+            setLiveStatus("#f59e0b", "Polling retrying...");
+            console.error("Realtime polling refresh failed", error);
+          });
+      }, pollMs);
+    }
+
+    // === WebSockets & Live Stream integration ===
+    let ws = null;
+    let wsReconnectTimeout = null;
+    let chartRefreshTimeout = null;
+    const REFRESH_THROTTLE_MS = 4000;
+
+    function scheduleChartRefresh() {
+      if (chartRefreshTimeout) return;
+      chartRefreshTimeout = setTimeout(async () => {
+        chartRefreshTimeout = null;
+        try {
+          await Promise.allSettled([
+            loadSummary(false),
+            loadTraffic("", false),
+            loadStatusCodes(activeStatusRange, false),
+            loadTopIPs(false),
+            loadRightStats(false)
+          ]);
+          startIPResolvePolling();
+        } catch (e) {
+          console.error("Failed to refresh real-time charts", e);
+        }
+      }, REFRESH_THROTTLE_MS);
+    }
+
+    function updateLiveFeed(logs) {
+      const tbody = document.getElementById("live-feed-results");
+      if (!tbody) return;
+
+      // Remove placeholder row if it exists
+      if (tbody.rows.length === 1 && tbody.rows[0].cells.length === 1) {
+        tbody.innerHTML = "";
+      }
+
+      logs.forEach(log => {
+        const tr = document.createElement("tr");
+        tr.style.opacity = "0";
+        tr.style.transition = "opacity 0.4s ease-in-out";
+
+        // Status code class/color
+        let statusClass = "status-info";
+        if (log.status >= 500) statusClass = "status-error";
+        else if (log.status >= 400) statusClass = "status-warning";
+        else if (log.status >= 300) statusClass = "status-redirect";
+        else if (log.status >= 200) statusClass = "status-success";
+
+        // Format timestamp to localized readable string
+        let timeStr = "";
+        try {
+          const dt = new Date(log.time);
+          timeStr = dt.toLocaleTimeString();
+        } catch (e) {
+          timeStr = log.time;
+        }
+
+        const method = String(log.method || "");
+        const sizeStr = log.size === null || log.size === undefined ? "-" : Number(log.size).toLocaleString();
+
+        tr.innerHTML = `
+          <td><span style="font-family: monospace; font-weight: 600;">${escapeHtml(log.ip)}</span></td>
+          <td style="color: var(--text-secondary); font-size: 12px;">${timeStr}</td>
+          <td><span class="method-tag method-${escapeHtml(method.toLowerCase())}">${escapeHtml(method)}</span></td>
+          <td><span style="font-family: monospace; font-size: 13px; color: var(--text-primary); word-break: break-all;">${escapeHtml(log.path)}</span></td>
+          <td><span class="status-badge ${statusClass}">${log.status}</span></td>
+          <td style="font-family: monospace; text-align: right; color: var(--text-secondary);">${sizeStr} B</td>
+        `;
+
+        tbody.insertBefore(tr, tbody.firstChild);
+
+        // Trigger fade-in animation
+        setTimeout(() => {
+          tr.style.opacity = "1";
+        }, 50);
+      });
+
+      // Keep only last 6 rows
+      while (tbody.rows.length > 6) {
+        tbody.removeChild(tbody.lastChild);
+      }
+    }
+
+    function updateLiveCounter(logs) {
+      const totalRequestsEl = document.getElementById("total-requests");
+      if (totalRequestsEl && totalRequestsEl.innerText !== "...") {
+        let currentVal = parseInt(totalRequestsEl.innerText.replace(/,/g, "")) || 0;
+        totalRequestsEl.innerText = (currentVal + logs.length).toLocaleString();
+      }
+    }
+
+    function connectWS() {
+      if (ws) {
+        try { ws.close(); } catch(e) {}
+      }
+
+      const wsProtocol = location.protocol === "https:" ? "wss://" : "ws://";
+      const wsUrl = wsProtocol + location.host + "/ws";
+
+      const statusDot = document.getElementById("ws-status-dot");
+      const statusText = document.getElementById("ws-status-text");
+
+      if (statusDot && statusText) {
+        statusDot.style.background = "#f59e0b"; // Amber (connecting)
+        statusText.innerText = "Connecting...";
+      }
+
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        console.log("WebSocket connected successfully.");
+        if (statusDot && statusText) {
+          statusDot.style.background = "#10b981"; // Green (connected)
+          statusText.innerText = "Live Connected";
+        }
+        if (wsReconnectTimeout) {
+          clearTimeout(wsReconnectTimeout);
+          wsReconnectTimeout = null;
+        }
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "new_logs" && data.logs) {
+            updateLiveFeed(data.logs);
+            updateLiveCounter(data.logs);
+            scheduleChartRefresh();
+          }
+        } catch (e) {
+          console.error("Error parsing WebSocket message", e);
+        }
+      };
+
+      ws.onclose = () => {
+        console.log("WebSocket connection closed.");
+        if (statusDot && statusText) {
+          statusDot.style.background = "#ef4444"; // Red (disconnected)
+          statusText.innerText = "Disconnected (Reconnecting...)";
+        }
+
+        // Reconnect every 3 seconds
+        if (!wsReconnectTimeout) {
+          wsReconnectTimeout = setTimeout(() => {
+            wsReconnectTimeout = null;
+            connectWS();
+          }, 3000);
+        }
+      };
+
+      ws.onerror = (err) => {
+        console.error("WebSocket encountered an error:", err);
+      };
+    }
+
+    // Override initDashboard to start Vercel-safe polling.
+    const originalInitDashboard = initDashboard;
+    initDashboard = async function() {
+      await originalInitDashboard();
+      startRealtimePolling();
+    };
 
     window.onload = initDashboard;
   </script>
